@@ -1,3 +1,5 @@
+// google gemini step 5 from deepseek
+
 import React, { useState, useEffect } from 'react';
 import {
   Grid,
@@ -8,22 +10,43 @@ import {
   Card,
   CardContent,
   Chip,
-} from '@mui/material';
+  IconButton,
+  Tooltip,
+} 
+
+
+from '@mui/material';
 import {
   Memory as MemoryIcon,
   Thermostat as TempIcon,
   Speed as CpuIcon,
   Timeline as TimelineIcon,
   Warning as WarningIcon,
+  Psychology as PsychologyIcon,
+  Refresh as RefreshIcon,
+  Insights as InsightsIcon,
 } from '@mui/icons-material';
 import { useWebSocket } from '../services/websocket';
 import { systemApi } from '../services/api';
 import { formatPercentage, formatTemperature, getStatusColor } from '../utils/formatters';
 import RealTimeChart from './RealTimeChart';
-import ConnectionStatus from './ConnectionStatus'; // ADD THIS IMPORT
+import ConnectionStatus from './ConnectionStatus';
+import AiInsights from './AiInsights'; // ADD AI INSIGHTS COMPONENT
 
 const Dashboard = () => {
-  const { metrics, connected, loading, pollCount, refreshMetrics } = useWebSocket(); // ADD THESE
+  const { 
+    metrics, 
+    connected, 
+    loading, 
+    pollCount, 
+    refreshMetrics,
+    aiInsights,
+    analyzing,
+    aiEnabled,
+    triggerManualAnalysis,
+    getLastAnalysisText
+  } = useWebSocket();
+  
   const [dashboardData, setDashboardData] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [cpuHistory, setCpuHistory] = useState([]);
@@ -80,6 +103,11 @@ const Dashboard = () => {
     refreshMetrics();
   };
 
+  // Handle manual AI analysis
+  const handleManualAIAnalysis = () => {
+    triggerManualAnalysis();
+  };
+
   if (!dashboardData) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -93,22 +121,82 @@ const Dashboard = () => {
   const criticalAlerts = alerts.filter(alert => alert.level === 'CRITICAL').length;
   const warningAlerts = alerts.filter(alert => alert.level === 'WARNING').length;
 
+  // Calculate AI health score for display
+  const aiHealthScore = aiInsights?.healthScore || 0;
+  const aiHealthColor = aiHealthScore >= 8 ? '#4caf50' : aiHealthScore >= 6 ? '#ff9800' : '#f44336';
+
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        System Dashboard
-        {connected && (
-          <Chip 
-            label={`Poll #${pollCount}`}
-            size="small" 
-            color="primary" 
-            sx={{ ml: 2, verticalAlign: 'middle' }}
-          />
-        )}
-      </Typography>
+      {/* Header with AI Status */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h4">
+          System Dashboard
+          {connected && (
+            <Chip 
+              label={`Poll #${pollCount}`}
+              size="small" 
+              color="primary" 
+              sx={{ ml: 2, verticalAlign: 'middle' }}
+            />
+          )}
+        </Typography>
+        
+        <Box display="flex" alignItems="center" gap={1}>
+          {/* AI Health Score Indicator */}
+          {aiInsights?.healthScore && (
+            <Tooltip title={`AI Health Score: ${aiHealthScore}/10`}>
+              <Paper sx={{ 
+                p: 1, 
+                display: 'flex', 
+                alignItems: 'center',
+                backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                border: `1px solid ${aiHealthColor}`
+              }}>
+                <PsychologyIcon sx={{ mr: 0.5, color: aiHealthColor, fontSize: 18 }} />
+                <Typography variant="body2" fontWeight="bold" color={aiHealthColor}>
+                  {aiHealthScore}/10
+                </Typography>
+              </Paper>
+            </Tooltip>
+          )}
+          
+          {/* Manual AI Analysis Button */}
+          <Tooltip title="Run AI Analysis">
+            <IconButton 
+              size="small" 
+              onClick={handleManualAIAnalysis}
+              disabled={analyzing || !aiEnabled}
+              color="primary"
+              sx={{ 
+                backgroundColor: aiEnabled ? 'rgba(103, 58, 183, 0.1)' : 'rgba(158, 158, 158, 0.1)',
+                '&:hover': {
+                  backgroundColor: aiEnabled ? 'rgba(103, 58, 183, 0.2)' : 'rgba(158, 158, 158, 0.2)'
+                }
+              }}
+            >
+              <InsightsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          
+          {/* Manual Refresh Button */}
+          <Tooltip title="Refresh Metrics">
+            <IconButton 
+              size="small" 
+              onClick={handleManualRefresh}
+              disabled={loading}
+              color="primary"
+            >
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
       
-      {/* ADD CONNECTION STATUS COMPONENT */}
+      {/* Connection Status */}
       <ConnectionStatus />
+      
+      {/* AI Insights Component - ADDED HERE */}
+      <AiInsights />
       
       {/* Manual Refresh Indicator */}
       {lastManualRefresh && (
@@ -119,13 +207,21 @@ const Dashboard = () => {
         </Paper>
       )}
 
+      {/* System Metrics Grid */}
       <Grid container spacing={3}>
-        {/* Status Summary */}
+        {/* Status Summary with AI Integration */}
         <Grid item xs={12} md={6} lg={3}>
           <Paper sx={{ p: 2, height: '100%' }}>
-            <Box display="flex" alignItems="center" mb={2}>
-              <CpuIcon sx={{ mr: 1, color: getStatusColor(dashboardData.status) }} />
-              <Typography variant="h6">System Status</Typography>
+            <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+              <Box display="flex" alignItems="center">
+                <CpuIcon sx={{ mr: 1, color: getStatusColor(dashboardData.status) }} />
+                <Typography variant="h6">System Status</Typography>
+              </Box>
+              {aiInsights?.summary && (
+                <Tooltip title="AI Summary">
+                  <PsychologyIcon sx={{ color: '#673ab7', fontSize: 18 }} />
+                </Tooltip>
+              )}
             </Box>
             <Chip
               label={dashboardData.status}
@@ -141,6 +237,13 @@ const Dashboard = () => {
             <Typography variant="body2" color="text.secondary">
               Uptime: {dashboardData.systemUptime}
             </Typography>
+            {aiInsights?.summary && (
+              <Box mt={1} pt={1} borderTop="1px solid rgba(255, 255, 255, 0.1)">
+                <Typography variant="caption" color="#673ab7" fontWeight="medium">
+                  AI: {aiInsights.summary}
+                </Typography>
+              </Box>
+            )}
             {loading && (
               <LinearProgress sx={{ mt: 1, height: 2 }} />
             )}
@@ -155,14 +258,19 @@ const Dashboard = () => {
                 <CpuIcon sx={{ mr: 1 }} />
                 <Typography variant="h6">CPU Usage</Typography>
               </Box>
-              {metrics?.dashboard?.cpuUsage !== undefined && (
-                <Chip 
-                  label="Live" 
-                  size="small" 
-                  color="success" 
-                  variant="outlined"
-                />
-              )}
+              <Box display="flex" alignItems="center" gap={1}>
+                {metrics?.dashboard?.cpuUsage !== undefined && (
+                  <Chip 
+                    label="Live" 
+                    size="small" 
+                    color="success" 
+                    variant="outlined"
+                  />
+                )}
+                {analyzing && (
+                  <PsychologyIcon sx={{ fontSize: 16, color: '#673ab7', animation: 'pulse 1s infinite' }} />
+                )}
+              </Box>
             </Box>
             <LinearProgress
               variant="determinate"
@@ -184,6 +292,14 @@ const Dashboard = () => {
             <Typography variant="caption" color="text.secondary">
               {metrics ? 'Live data' : 'Polled data'}
             </Typography>
+            {/* AI CPU Insights */}
+            {aiInsights?.bottlenecks?.some(b => b.toLowerCase().includes('cpu')) && (
+              <Box mt={1}>
+                <Typography variant="caption" color="warning.main">
+                  ⚠️ AI detected CPU bottleneck
+                </Typography>
+              </Box>
+            )}
           </Paper>
         </Grid>
 
@@ -224,6 +340,14 @@ const Dashboard = () => {
             <Typography variant="caption" color="text.secondary">
               {metrics ? 'Live data' : 'Polled data'}
             </Typography>
+            {/* AI Memory Insights */}
+            {aiInsights?.bottlenecks?.some(b => b.toLowerCase().includes('memory')) && (
+              <Box mt={1}>
+                <Typography variant="caption" color="warning.main">
+                  ⚠️ AI detected memory bottleneck
+                </Typography>
+              </Box>
+            )}
           </Paper>
         </Grid>
 
@@ -244,15 +368,30 @@ const Dashboard = () => {
                 Sensor not available
               </Typography>
             )}
+            {/* AI Temperature Insights */}
+            {aiInsights?.predictions?.some(p => p.toLowerCase().includes('temperature') || p.toLowerCase().includes('overheat')) && (
+              <Box mt={1}>
+                <Typography variant="caption" color="error.main">
+                  🔥 AI predicts overheating risk
+                </Typography>
+              </Box>
+            )}
           </Paper>
         </Grid>
 
-        {/* Alerts Summary */}
+        {/* Alerts Summary with AI Predictions */}
         <Grid item xs={12} md={6} lg={3}>
           <Paper sx={{ p: 2, height: '100%' }}>
-            <Box display="flex" alignItems="center" mb={2}>
-              <WarningIcon sx={{ mr: 1 }} />
-              <Typography variant="h6">Alerts</Typography>
+            <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+              <Box display="flex" alignItems="center">
+                <WarningIcon sx={{ mr: 1 }} />
+                <Typography variant="h6">Alerts</Typography>
+              </Box>
+              {aiInsights?.predictions && aiInsights.predictions.length > 0 && (
+                <Tooltip title={`${aiInsights.predictions.length} AI Predictions`}>
+                  <PsychologyIcon sx={{ color: '#673ab7', fontSize: 18 }} />
+                </Tooltip>
+              )}
             </Box>
             <Box display="flex" flexDirection="column" gap={1}>
               <Chip
@@ -265,10 +404,24 @@ const Dashboard = () => {
                 color="warning"
                 size="small"
               />
+              {aiInsights?.predictions && aiInsights.predictions.length > 0 && (
+                <Chip
+                  label={`${aiInsights.predictions.length} AI Predictions`}
+                  color="secondary"
+                  size="small"
+                  icon={<PsychologyIcon />}
+                />
+              )}
             </Box>
             <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
               Updated every 3 seconds
             </Typography>
+            {/* Last AI Analysis Time */}
+            {aiInsights?.timestamp && (
+              <Typography variant="caption" color="#673ab7" sx={{ mt: 1, display: 'block' }}>
+                AI: {getLastAnalysisText()}
+              </Typography>
+            )}
           </Paper>
         </Grid>
 
@@ -287,6 +440,12 @@ const Dashboard = () => {
             <Typography variant="caption" color="text.secondary" align="center">
               Last 20 polls ({Math.round(cpuHistory.length * 3 / 60)} minutes)
             </Typography>
+            {/* AI CPU Trend */}
+            {aiInsights?.predictions?.some(p => p.toLowerCase().includes('cpu trend')) && (
+              <Typography variant="caption" color="#2196f3" align="center" display="block" mt={0.5}>
+                🧠 AI: Monitoring CPU trend
+              </Typography>
+            )}
           </Paper>
         </Grid>
 
@@ -304,68 +463,105 @@ const Dashboard = () => {
             <Typography variant="caption" color="text.secondary" align="center">
               Last 20 polls ({Math.round(memoryHistory.length * 3 / 60)} minutes)
             </Typography>
+            {/* AI Memory Trend */}
+            {aiInsights?.predictions?.some(p => p.toLowerCase().includes('memory trend')) && (
+              <Typography variant="caption" color="#4caf50" align="center" display="block" mt={0.5}>
+                🧠 AI: Monitoring memory trend
+              </Typography>
+            )}
           </Paper>
         </Grid>
 
-        {/* Recent Alerts */}
+        {/* Recent Alerts with AI Predictions */}
         <Grid item xs={12}>
           <Paper sx={{ p: 2 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
               <Typography variant="h6">
-                Recent Alerts
+                Recent Alerts & AI Predictions
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 Total: {alerts.length} alerts
               </Typography>
             </Box>
-            {alerts.slice(0, 5).map((alert, index) => (
-              <Card key={index} sx={{ 
-                mb: 1, 
-                backgroundColor: alert.level === 'CRITICAL' 
-                  ? 'rgba(255, 68, 68, 0.1)' 
-                  : 'rgba(255, 187, 51, 0.1)',
-                borderLeft: `4px solid ${getStatusColor(alert.level === 'CRITICAL' ? 'CRITICAL' : 'WARNING')}`
-              }}>
-                <CardContent>
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Box>
-                      <Typography variant="body1" fontWeight="medium">
-                        {alert.type}: {alert.message}
-                      </Typography>
-                      {alert.timestamp && (
-                        <Typography variant="caption" color="text.secondary">
-                          {new Date(alert.timestamp).toLocaleTimeString()}
-                        </Typography>
-                      )}
+            
+            {/* Combine System Alerts and AI Predictions */}
+            {[...alerts, ...(aiInsights?.predictions?.map((pred, index) => ({
+              id: `ai-pred-${index}`,
+              type: 'AI_PREDICTION',
+              level: 'INFO',
+              message: pred,
+              timestamp: new Date().getTime(),
+              source: 'ai'
+            })) || [])]
+              .slice(0, 8)
+              .map((alert, index) => (
+                <Card key={alert.id || index} sx={{ 
+                  mb: 1, 
+                  backgroundColor: alert.source === 'ai' 
+                    ? 'rgba(103, 58, 183, 0.1)' 
+                    : alert.level === 'CRITICAL' 
+                      ? 'rgba(255, 68, 68, 0.1)' 
+                      : 'rgba(255, 187, 51, 0.1)',
+                  borderLeft: `4px solid ${
+                    alert.source === 'ai' ? '#673ab7' :
+                    alert.level === 'CRITICAL' ? '#f44336' : '#ff9800'
+                  }`
+                }}>
+                  <CardContent>
+                    <Box display="flex" alignItems="center" justifyContent="space-between">
+                      <Box>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          {alert.source === 'ai' && <PsychologyIcon sx={{ fontSize: 16, color: '#673ab7' }} />}
+                          <Typography variant="body1" fontWeight="medium">
+                            {alert.type}: {alert.message}
+                          </Typography>
+                        </Box>
+                        {alert.timestamp && (
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(alert.timestamp).toLocaleTimeString()}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Chip
+                        label={alert.source === 'ai' ? 'AI Prediction' : alert.level}
+                        size="small"
+                        color={alert.source === 'ai' ? 'secondary' : alert.level === 'CRITICAL' ? 'error' : 'warning'}
+                        icon={alert.source === 'ai' ? <PsychologyIcon /> : undefined}
+                      />
                     </Box>
-                    <Chip
-                      label={alert.level}
-                      size="small"
-                      color={alert.level === 'CRITICAL' ? 'error' : 'warning'}
-                    />
-                  </Box>
-                </CardContent>
-              </Card>
-            ))}
-            {alerts.length === 0 && (
+                  </CardContent>
+                </Card>
+              ))}
+            
+            {alerts.length === 0 && (!aiInsights?.predictions || aiInsights.predictions.length === 0) && (
               <Box textAlign="center" py={3}>
                 <WarningIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
                 <Typography color="text.secondary">
-                  No active alerts
+                  No active alerts or predictions
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   All systems operating normally
                 </Typography>
               </Box>
             )}
-            {alerts.length > 5 && (
+            
+            {(alerts.length > 8 || (aiInsights?.predictions && aiInsights.predictions.length > 4)) && (
               <Typography variant="caption" color="text.secondary" align="center" display="block" mt={1}>
-                ... and {alerts.length - 5} more alerts
+                ... showing 8 most recent items
               </Typography>
             )}
           </Paper>
         </Grid>
       </Grid>
+      
+      {/* Add CSS animation for AI icon */}
+      <style jsx>{`
+        @keyframes pulse {
+          0% { opacity: 1; }
+          50% { opacity: 0.5; }
+          100% { opacity: 1; }
+        }
+      `}</style>
     </Box>
   );
 };
