@@ -37,11 +37,45 @@ public class SystemMonitoringService {
     
     private long[] previousCpuTicks;
     
+    // Network tracking for speed calculation
+    private Map<String, NetworkStats> previousNetworkStats = new HashMap<>();
+    private long lastNetworkUpdateTime = System.currentTimeMillis();
+    
+    // Helper class to store previous network statistics
+    private static class NetworkStats {
+        long bytesSent;
+        long bytesRecv;
+        long timestamp;
+
+
+        
+        
+        NetworkStats(long bytesSent, long bytesRecv, long timestamp) {
+            this.bytesSent = bytesSent;
+            this.bytesRecv = bytesRecv;
+            this.timestamp = timestamp;
+        }
+    }
+    
     public SystemMonitoringService() {
         this.systemInfo = new SystemInfo();
         this.hardware = systemInfo.getHardware();
         this.os = systemInfo.getOperatingSystem();
         this.previousCpuTicks = hardware.getProcessor().getSystemCpuLoadTicks();
+        
+        // Initialize network statistics on startup
+        initializeNetworkStats();
+    }
+    
+    private void initializeNetworkStats() {
+        previousNetworkStats.clear();
+        for (NetworkIF net : hardware.getNetworkIFs()) {
+            if (!net.getName().contains("Loopback") && !net.getName().contains("lo")) {
+                previousNetworkStats.put(net.getName(), 
+                    new NetworkStats(net.getBytesSent(), net.getBytesRecv(), System.currentTimeMillis()));
+            }
+        }
+        lastNetworkUpdateTime = System.currentTimeMillis();
     }
     
     public SystemMetricsDTO getSystemMetrics() {
@@ -95,52 +129,52 @@ public class SystemMonitoringService {
         return dashboard;
     }
     
-   private CpuDetailsDTO getCpuDetails(double cpuLoad) {
-    CpuDetailsDTO cpuDetails = new CpuDetailsDTO();
-    CentralProcessor cpu = hardware.getProcessor();
-    
-    cpuDetails.setName(cpu.getProcessorIdentifier().getName());
-    cpuDetails.setPhysicalCores(cpu.getPhysicalProcessorCount());
-    cpuDetails.setLogicalCores(cpu.getLogicalProcessorCount());
-    cpuDetails.setCurrentFrequency(formatHertz(cpu.getProcessorIdentifier().getVendorFreq()));
-    cpuDetails.setMaxFrequency(formatHertz(cpu.getMaxFreq()));
-    
-    // Load averages - IMPROVED: Handle -1 values
-    double[] loadAvg = cpu.getSystemLoadAverage(3);
-    // Create a safe array with default values
-    double[] safeLoadAvg = new double[3];
-    if (loadAvg != null && loadAvg.length >= 3) {
-        // OSHI returns -1 for unavailable load averages
-        safeLoadAvg[0] = loadAvg[0] >= 0 ? loadAvg[0] : 0.0;
-        safeLoadAvg[1] = loadAvg[1] >= 0 ? loadAvg[1] : 0.0;
-        safeLoadAvg[2] = loadAvg[2] >= 0 ? loadAvg[2] : 0.0;
+    private CpuDetailsDTO getCpuDetails(double cpuLoad) {
+        CpuDetailsDTO cpuDetails = new CpuDetailsDTO();
+        CentralProcessor cpu = hardware.getProcessor();
+        
+        cpuDetails.setName(cpu.getProcessorIdentifier().getName());
+        cpuDetails.setPhysicalCores(cpu.getPhysicalProcessorCount());
+        cpuDetails.setLogicalCores(cpu.getLogicalProcessorCount());
+        cpuDetails.setCurrentFrequency(formatHertz(cpu.getProcessorIdentifier().getVendorFreq()));
+        cpuDetails.setMaxFrequency(formatHertz(cpu.getMaxFreq()));
+        
+        // Load averages - IMPROVED: Handle -1 values
+        double[] loadAvg = cpu.getSystemLoadAverage(3);
+        // Create a safe array with default values
+        double[] safeLoadAvg = new double[3];
+        if (loadAvg != null && loadAvg.length >= 3) {
+            // OSHI returns -1 for unavailable load averages
+            safeLoadAvg[0] = loadAvg[0] >= 0 ? loadAvg[0] : 0.0;
+            safeLoadAvg[1] = loadAvg[1] >= 0 ? loadAvg[1] : 0.0;
+            safeLoadAvg[2] = loadAvg[2] >= 0 ? loadAvg[2] : 0.0;
+        }
+        cpuDetails.setLoadAverages(safeLoadAvg);
+        
+        // Per core usage - FIXED HERE
+        double[] perCoreLoad = new double[0];
+        try {
+            perCoreLoad = cpu.getProcessorCpuLoad(1000);
+        } catch (Exception e) {
+            perCoreLoad = new double[cpu.getLogicalProcessorCount()];
+            double perCore = cpuLoad / 100.0 / perCoreLoad.length;
+            Arrays.fill(perCoreLoad, perCore);
+        }
+        cpuDetails.setPerCoreUsage(perCoreLoad);
+        
+        // CPU ticks
+        long[] ticks = cpu.getSystemCpuLoadTicks();
+        Map<String, Long> tickMap = new HashMap<>();
+        for (CentralProcessor.TickType type : CentralProcessor.TickType.values()) {
+            tickMap.put(type.name(), ticks[type.getIndex()]);
+        }
+        cpuDetails.setCpuTicks(tickMap);
+        
+        // Update previous ticks for next call
+        previousCpuTicks = ticks;
+        
+        return cpuDetails;
     }
-    cpuDetails.setLoadAverages(safeLoadAvg);
-    
-    // Per core usage - FIXED HERE
-    double[] perCoreLoad = new double[0];
-    try {
-        perCoreLoad = cpu.getProcessorCpuLoad(1000);
-    } catch (Exception e) {
-        perCoreLoad = new double[cpu.getLogicalProcessorCount()];
-        double perCore = cpuLoad / 100.0 / perCoreLoad.length;
-        Arrays.fill(perCoreLoad, perCore);
-    }
-    cpuDetails.setPerCoreUsage(perCoreLoad);
-    
-    // CPU ticks
-    long[] ticks = cpu.getSystemCpuLoadTicks();
-    Map<String, Long> tickMap = new HashMap<>();
-    for (CentralProcessor.TickType type : CentralProcessor.TickType.values()) {
-        tickMap.put(type.name(), ticks[type.getIndex()]);
-    }
-    cpuDetails.setCpuTicks(tickMap);
-    
-    // Update previous ticks for next call
-    previousCpuTicks = ticks;
-    
-    return cpuDetails;
-}
     
     private MemoryDetailsDTO getMemoryDetails() {
         MemoryDetailsDTO memoryDetails = new MemoryDetailsDTO();
@@ -185,6 +219,7 @@ public class SystemMonitoringService {
     
     private List<NetworkDTO> getNetworkInfo() {
         List<NetworkDTO> networks = new ArrayList<>();
+        long currentTime = System.currentTimeMillis();
         
         for (NetworkIF net : hardware.getNetworkIFs()) {
             if (net.getName().contains("Loopback") || net.getName().contains("lo")) {
@@ -197,12 +232,48 @@ public class SystemMonitoringService {
             network.setBytesSent(net.getBytesSent());
             network.setBytesReceived(net.getBytesRecv());
             
-            // Calculate speeds (would need previous values for accurate calculation)
-            network.setUploadSpeed(0);
-            network.setDownloadSpeed(0);
+            // Calculate speeds based on previous values
+            long uploadSpeed = 0;
+            long downloadSpeed = 0;
+            
+            String interfaceName = net.getName();
+            NetworkStats previousStats = previousNetworkStats.get(interfaceName);
+            
+            if (previousStats != null) {
+                long timeDelta = currentTime - previousStats.timestamp;
+                
+                if (timeDelta > 0) {
+                    // Calculate upload speed (bytes per second)
+                    long bytesSentDelta = net.getBytesSent() - previousStats.bytesSent;
+                    uploadSpeed = (bytesSentDelta * 1000) / timeDelta; // bytes per second
+                    
+                    // Calculate download speed (bytes per second)
+                    long bytesRecvDelta = net.getBytesRecv() - previousStats.bytesRecv;
+                    downloadSpeed = (bytesRecvDelta * 1000) / timeDelta; // bytes per second
+                    
+                    // Ensure non-negative values (counters can reset or wrap)
+                    uploadSpeed = Math.max(0, uploadSpeed);
+                    downloadSpeed = Math.max(0, downloadSpeed);
+                }
+            }
+            
+            network.setUploadSpeed(uploadSpeed);
+            network.setDownloadSpeed(downloadSpeed);
+            
+            // Update previous stats for next calculation
+            previousNetworkStats.put(interfaceName, 
+                new NetworkStats(net.getBytesSent(), net.getBytesRecv(), currentTime));
             
             networks.add(network);
         }
+        
+        lastNetworkUpdateTime = currentTime;
+        
+        // Clean up old entries for interfaces that might have been removed
+        Set<String> currentInterfaceNames = networks.stream()
+            .map(NetworkDTO::getName)
+            .collect(Collectors.toSet());
+        previousNetworkStats.keySet().removeIf(name -> !currentInterfaceNames.contains(name));
         
         return networks;
     }

@@ -32,56 +32,152 @@ import {
   BugReport as BugIcon,
 } from '@mui/icons-material';
 import { systemApi } from '../services/api';
+import geminiService from '../services/geminiService';
 import { formatBytes, formatPercentage } from '../utils/formatters';
 
-// Mock AI prediction service - replace with actual implementation
+// Helper function to parse AI response into predictions format
+const parseAIResponseToPredictions = (aiResponse) => {
+  // If AI response already has predictions array, return it
+  if (aiResponse.predictions && Array.isArray(aiResponse.predictions)) {
+    return aiResponse.predictions;
+  }
+  
+  // If AI returned an object with a predictions property
+  if (aiResponse && aiResponse.predictions) {
+    return aiResponse.predictions.map(pred => ({
+      type: pred.type || 'GENERAL_ISSUE',
+      confidence: pred.confidence || 50,
+      message: pred.message || pred.text || 'Issue detected',
+      severity: pred.severity || (pred.confidence > 70 ? 'high' : pred.confidence > 50 ? 'medium' : 'low'),
+      predictionTimeframe: pred.predictionTimeframe || '30 minutes',
+      suggestedAction: pred.suggestedAction || 'Monitor closely',
+      timestamp: new Date().toISOString()
+    }));
+  }
+  
+  // Fallback: parse text response
+  if (aiResponse && typeof aiResponse === 'object') {
+    const text = aiResponse.text || JSON.stringify(aiResponse);
+    
+    // Try to extract predictions from text
+    if (text.includes('CPU') || text.includes('spike')) {
+      return [{
+        type: 'CPU_SPIKE',
+        confidence: 65,
+        message: 'Potential CPU spike detected based on AI analysis',
+        severity: 'medium',
+        predictionTimeframe: '15 minutes',
+        suggestedAction: 'Monitor CPU usage closely',
+        timestamp: new Date().toISOString()
+      }];
+    }
+  }
+  
+  // Default fallback
+  return [{
+    type: 'ANALYSIS_COMPLETE',
+    confidence: 60,
+    message: 'AI analysis completed. Process appears stable.',
+    severity: 'low',
+    predictionTimeframe: '1 hour',
+    suggestedAction: 'Continue monitoring',
+    timestamp: new Date().toISOString()
+  }];
+};
+
+// Process prediction service that uses Gemini
 const processPredictionService = {
   analyzeProcess: async (processData, historicalData) => {
-    // This would connect to your actual AI prediction backend
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const predictions = [];
-        
-        // CPU spike prediction (mock logic)
-        if (processData.cpuUsage > 30 && processData.cpuUsageTrend > 5) {
-          predictions.push({
-            type: 'CPU_SPIKE',
-            confidence: 85,
-            message: `Likely to consume excessive CPU in next 5 minutes`,
-            severity: 'high',
-            timestamp: new Date().toISOString(),
-            predictionTimeframe: '5 minutes'
-          });
-        }
-        
-        // Crash prediction (mock logic)
-        if (processData.memoryUsage > 500000000 && processData.memoryTrend > 10) {
-          predictions.push({
-            type: 'CRASH_RISK',
-            confidence: 75,
-            message: `Potential crash risk due to memory pressure`,
-            severity: 'medium',
-            timestamp: new Date().toISOString(),
-            predictionTimeframe: '10 minutes'
-          });
-        }
-        
-        // Hang prediction (mock logic)
-        if (processData.threadCount > 100 && processData.cpuUsage < 1) {
-          predictions.push({
-            type: 'HANG_RISK',
-            confidence: 65,
-            message: `Process may hang due to high thread count with low CPU`,
-            severity: 'low',
-            timestamp: new Date().toISOString(),
-            predictionTimeframe: '15 minutes'
-          });
-        }
-        
-        resolve(predictions);
-      }, 500);
+    try {
+      // Get system context for better predictions
+      let contextMetrics = null;
+      try {
+        const response = await systemApi.getSystemMetrics();
+        contextMetrics = response.data;
+      } catch (error) {
+        console.warn('Could not fetch system context for AI analysis:', error);
+      }
+      
+      // Call the new analyzeProcess method from GeminiService
+      const aiResponse = await geminiService.analyzeProcess(processData, contextMetrics);
+      
+      // If Gemini returned predictions directly
+      if (aiResponse.predictions && Array.isArray(aiResponse.predictions)) {
+        return aiResponse.predictions;
+      }
+      
+      // If Gemini returned an object with predictions
+      if (aiResponse && aiResponse.predictions) {
+        return parseAIResponseToPredictions(aiResponse);
+      }
+      
+      // Fallback to mock analysis if Gemini fails or returns unexpected format
+      console.warn('Unexpected Gemini response format, falling back to mock analysis');
+      return fallbackMockAnalysis(processData);
+      
+    } catch (error) {
+      console.error('AI prediction failed:', error);
+      
+      // Fallback to mock analysis on error
+      return fallbackMockAnalysis(processData);
+    }
+  }
+};
+
+// Simple fallback mock analysis
+const fallbackMockAnalysis = (processData) => {
+  const predictions = [];
+  const now = new Date().toISOString();
+  
+  if (processData.cpuUsage > 70) {
+    predictions.push({
+      type: 'CPU_SPIKE',
+      confidence: Math.min(95, 60 + processData.cpuUsage),
+      message: `High CPU usage (${processData.cpuUsage}%) may cause system slowdown`,
+      severity: 'high',
+      predictionTimeframe: '10 minutes',
+      suggestedAction: 'Check for runaway threads or infinite loops',
+      timestamp: now
     });
   }
+  
+  if (processData.memoryUsage > 1000000000) { // > 1GB
+    predictions.push({
+      type: 'MEMORY_LEAK',
+      confidence: 65,
+      message: 'Large memory footprint detected',
+      severity: 'medium',
+      predictionTimeframe: '30 minutes',
+      suggestedAction: 'Monitor memory growth over time',
+      timestamp: now
+    });
+  }
+  
+  if (processData.threadCount > 100) {
+    predictions.push({
+      type: 'THREAD_EXHAUSTION',
+      confidence: 55,
+      message: 'High thread count may lead to context switching overhead',
+      severity: 'medium',
+      predictionTimeframe: '20 minutes',
+      suggestedAction: 'Consider thread pooling or reducing thread count',
+      timestamp: now
+    });
+  }
+  
+  if (predictions.length === 0 && processData.cpuUsage > 40) {
+    predictions.push({
+      type: 'MONITOR',
+      confidence: 50,
+      message: 'Process shows elevated resource usage',
+      severity: 'low',
+      predictionTimeframe: '1 hour',
+      suggestedAction: 'Continue monitoring for trends',
+      timestamp: now
+    });
+  }
+  
+  return predictions;
 };
 
 const ProcessList = () => {
@@ -94,6 +190,10 @@ const ProcessList = () => {
   const [analyzing, setAnalyzing] = useState(false);
   const [predictionHistory, setPredictionHistory] = useState([]);
   const [currentlyAnalyzing, setCurrentlyAnalyzing] = useState([]);
+  const [aiServiceStatus, setAiServiceStatus] = useState({
+    enabled: geminiService.enabled,
+    lastError: null
+  });
 
   useEffect(() => {
     const fetchProcesses = async () => {
@@ -101,7 +201,7 @@ const ProcessList = () => {
         const response = await systemApi.getProcesses();
         const processesWithTrend = (response.data.processes || []).map(p => ({
           ...p,
-          // Add mock trend data - replace with actual trend calculation from history
+          // Add mock trend data - in production, calculate from history
           cpuUsageTrend: Math.random() * 10 - 5,
           memoryTrend: Math.random() * 15 - 7.5,
         }));
@@ -127,12 +227,47 @@ const ProcessList = () => {
     setAnalyzing(true);
     
     // Add process to currently analyzing list
-    setCurrentlyAnalyzing(prev => {
-      const newList = [...prev, { pid: process.pid, name: process.name, startTime: Date.now() }];
-      return newList;
-    });
+    setCurrentlyAnalyzing(prev => [
+      ...prev, 
+      { pid: process.pid, name: process.name, startTime: Date.now() }
+    ]);
     
     try {
+      // Check if Gemini is enabled
+      if (!geminiService.enabled) {
+        setAiServiceStatus(prev => ({
+          ...prev,
+          lastError: 'Gemini AI not enabled. Check API key.'
+        }));
+        
+        // Use fallback if Gemini disabled
+        const predictions = fallbackMockAnalysis(process);
+        
+        setProcessPredictions(prev => ({
+          ...prev,
+          [process.pid]: {
+            predictions,
+            lastUpdated: new Date().toISOString(),
+            processName: process.name
+          }
+        }));
+        
+        // Add to prediction history
+        setPredictionHistory(prev => [
+          ...prev,
+          {
+            pid: process.pid,
+            processName: process.name,
+            predictions,
+            timestamp: new Date().toISOString(),
+            actualCpu: process.cpuUsage,
+            actualMemory: process.memoryUsage
+          }
+        ].slice(-100));
+        
+        return;
+      }
+      
       const predictions = await processPredictionService.analyzeProcess(process, predictionHistory);
       
       setProcessPredictions(prev => ({
@@ -155,10 +290,14 @@ const ProcessList = () => {
           actualCpu: process.cpuUsage,
           actualMemory: process.memoryUsage
         }
-      ].slice(-100)); // Keep last 100 predictions
+      ].slice(-100));
       
     } catch (error) {
       console.error('Prediction error:', error);
+      setAiServiceStatus(prev => ({
+        ...prev,
+        lastError: error.message
+      }));
     } finally {
       // Remove from currently analyzing list
       setCurrentlyAnalyzing(prev => prev.filter(p => p.pid !== process.pid));
@@ -171,21 +310,26 @@ const ProcessList = () => {
     setAnalyzing(true);
     const highRiskProcesses = processes.filter(p => p.cpuUsage > 40 || p.memoryUsage > 500000000);
     
+    // Limit to 5 processes to avoid rate limiting
+    const processesToAnalyze = highRiskProcesses.slice(0, 5);
+    
     // Add all processes to currently analyzing list
-    const analyzingList = highRiskProcesses.slice(0, 5).map(p => ({
+    const analyzingList = processesToAnalyze.map(p => ({
       pid: p.pid, 
       name: p.name, 
       startTime: Date.now()
     }));
     setCurrentlyAnalyzing(analyzingList);
     
-    for (const process of highRiskProcesses.slice(0, 5)) {
+    // Analyze processes sequentially to avoid overwhelming the API
+    for (const process of processesToAnalyze) {
       await predictProcessBehavior(process);
     }
     
     setAnalyzing(false);
   }, [processes, predictProcessBehavior]);
 
+  // Filter and sort processes
   useEffect(() => {
     let result = [...processes];
     
@@ -230,6 +374,8 @@ const ProcessList = () => {
       case 'CPU_SPIKE': return <BoltIcon fontSize="small" />;
       case 'CRASH_RISK': return <BugIcon fontSize="small" />;
       case 'HANG_RISK': return <WarningIcon fontSize="small" />;
+      case 'MEMORY_LEAK': return <MemoryIcon fontSize="small" />;
+      case 'THREAD_EXHAUSTION': return <CpuIcon fontSize="small" />;
       default: return <TimelineIcon fontSize="small" />;
     }
   };
@@ -306,6 +452,13 @@ const ProcessList = () => {
         Process List with AI Predictions
       </Typography>
       
+      {/* AI Service Status Alert */}
+      {aiServiceStatus.lastError && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {aiServiceStatus.lastError}
+        </Alert>
+      )}
+      
       {/* AI Prediction Controls */}
       <Paper sx={{ p: 2, mb: 3, backgroundColor: 'rgba(103, 58, 183, 0.1)' }}>
         <Box display="flex" justifyContent="space-between" alignItems="center">
@@ -316,7 +469,9 @@ const ProcessList = () => {
                 AI Process Behavior Predictions
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Predict CPU spikes, crashes, and hangs before they happen
+                {geminiService.enabled 
+                  ? 'Predict CPU spikes, crashes, and hangs before they happen'
+                  : 'Gemini AI disabled. Check API key configuration.'}
               </Typography>
             </Box>
           </Box>
@@ -327,7 +482,7 @@ const ProcessList = () => {
               size="small"
               startIcon={<PsychologyIcon />}
               onClick={predictAllHighRisk}
-              disabled={analyzing}
+              disabled={analyzing || !geminiService.enabled}
               color="secondary"
             >
               {analyzing ? 'Analyzing...' : 'Predict High-Risk'}
@@ -416,7 +571,9 @@ const ProcessList = () => {
           </Grid>
           
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            AI is analyzing process behavior patterns to predict future issues...
+            {geminiService.enabled 
+              ? 'AI is analyzing process behavior patterns to predict future issues...'
+              : 'Using fallback analysis (Gemini AI not enabled)'}
           </Typography>
         </Paper>
       )}
@@ -544,7 +701,7 @@ const ProcessList = () => {
                           {predictions.slice(0, 2).map((pred, idx) => (
                             <Chip
                               key={idx}
-                              label={pred.type.replace('_', ' ')}
+                              label={pred.type?.replace('_', ' ') || 'Prediction'}
                               size="small"
                               icon={getPredictionIcon(pred.type)}
                               sx={{
@@ -588,7 +745,7 @@ const ProcessList = () => {
                           )
                         }
                         onClick={() => predictProcessBehavior(process)}
-                        disabled={analyzing || isCurrentlyAnalyzing}
+                        disabled={analyzing || isCurrentlyAnalyzing || !geminiService.enabled}
                         sx={{
                           minWidth: 100,
                           backgroundColor: isCurrentlyAnalyzing 
@@ -646,7 +803,7 @@ const ProcessList = () => {
                   {history.predictions.map((pred, pIdx) => (
                     <Chip
                       key={pIdx}
-                      label={`${pred.type.replace('_', ' ')} (${pred.confidence}%)`}
+                      label={`${pred.type?.replace('_', ' ') || 'Prediction'} (${pred.confidence}%)`}
                       size="small"
                       sx={{
                         backgroundColor: getPredictionSeverityColor(pred.severity),
@@ -730,6 +887,7 @@ const ProcessList = () => {
                         onClick={() => predictProcessBehavior(process)}
                         sx={{ mt: 1 }}
                         color="warning"
+                        disabled={!geminiService.enabled}
                       >
                         Analyze Risk
                       </Button>
@@ -789,7 +947,7 @@ const ProcessList = () => {
                 Active Predictions
               </Typography>
               <Typography variant="h5">
-                {Object.values(processPredictions).reduce((sum, p) => sum + p.predictions.length, 0)}
+                {Object.values(processPredictions).reduce((sum, p) => sum + (p.predictions?.length || 0), 0)}
               </Typography>
             </Box>
             <Box sx={{ p: 1 }}>
@@ -827,7 +985,7 @@ const ProcessList = () => {
                 Total Threads
               </Typography>
               <Typography variant="h5">
-                {processes.reduce((sum, p) => sum + p.threadCount, 0)}
+                {processes.reduce((sum, p) => sum + (p.threadCount || 0), 0)}
               </Typography>
             </Box>
           </Paper>
