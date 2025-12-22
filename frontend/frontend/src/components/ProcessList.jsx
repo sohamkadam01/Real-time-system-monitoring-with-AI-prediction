@@ -19,6 +19,18 @@ import {
   Tooltip,
   Alert,
   LinearProgress,
+  Card,
+  CardContent,
+  Stack,
+  useTheme,
+  alpha,
+  Fade,
+  Zoom,
+  Slide,
+  Grow,
+  Avatar,
+  Badge,
+  CircularProgress
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -30,6 +42,15 @@ import {
   Psychology as PsychologyIcon,
   Bolt as BoltIcon,
   BugReport as BugIcon,
+  ExpandMore as ExpandMoreIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  RocketLaunch as RocketIcon,
+  Security as SecurityIcon,
+  Insights as InsightsIcon,
+  TrendingUp as TrendingUpIcon,
+  BarChart as BarChartIcon,
+  Refresh as RefreshIcon,
+  Speed as SpeedIcon
 } from '@mui/icons-material';
 import { systemApi } from '../services/api';
 import geminiService from '../services/geminiService';
@@ -181,6 +202,7 @@ const fallbackMockAnalysis = (processData) => {
 };
 
 const ProcessList = () => {
+  const theme = useTheme();
   const [processes, setProcesses] = useState([]);
   const [filteredProcesses, setFilteredProcesses] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -362,10 +384,10 @@ const ProcessList = () => {
 
   const getPredictionSeverityColor = (severity) => {
     switch (severity) {
-      case 'high': return '#ff4444';
-      case 'medium': return '#ffbb33';
-      case 'low': return '#4caf50';
-      default: return '#757575';
+      case 'high': return theme.palette.error.main;
+      case 'medium': return theme.palette.warning.main;
+      case 'low': return theme.palette.success.main;
+      default: return theme.palette.grey[500];
     }
   };
 
@@ -386,6 +408,10 @@ const ProcessList = () => {
         active={sortBy === column}
         direction={sortBy === column ? sortOrder : 'asc'}
         onClick={() => handleSort(column)}
+        sx={{
+          fontWeight: 'bold',
+          '&:hover': { color: theme.palette.primary.main }
+        }}
       >
         {label}
       </TableSortLabel>
@@ -406,9 +432,9 @@ const ProcessList = () => {
   };
 
   const getProcessStatusColor = (cpuUsage) => {
-    if (cpuUsage >= 50) return '#ff4444';
-    if (cpuUsage >= 20) return '#ffbb33';
-    return '#00C851';
+    if (cpuUsage >= 50) return theme.palette.error.main;
+    if (cpuUsage >= 20) return theme.palette.warning.main;
+    return theme.palette.success.main;
   };
 
   // Calculate risk score for a process
@@ -423,575 +449,976 @@ const ProcessList = () => {
   }, []);
 
   // Create pulsing AI icon component
-  const PulsingAiIcon = ({ size = 16, iconSize = 10 }) => (
+  const PulsingAiIcon = ({ size = 16, iconSize = 10, color = theme.palette.secondary.main }) => (
     <Box sx={{ 
       width: size, 
       height: size, 
       borderRadius: '50%', 
-      backgroundColor: '#2196f3',
+      background: `linear-gradient(135deg, ${color} 0%, ${alpha(color, 0.8)} 100%)`,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      animation: 'pulse 1.5s infinite'
+      animation: 'pulse 1.5s infinite',
+      boxShadow: `0 0 12px ${alpha(color, 0.5)}`
     }}>
       <PsychologyIcon sx={{ fontSize: iconSize, color: 'white' }} />
     </Box>
   );
 
+  // Calculate prediction statistics
+  const predictionStats = useMemo(() => {
+    const allPredictions = Object.values(processPredictions).flatMap(p => p.predictions || []);
+    return {
+      totalPredictions: allPredictions.length,
+      highSeverity: allPredictions.filter(p => p.severity === 'high').length,
+      mediumSeverity: allPredictions.filter(p => p.severity === 'medium').length,
+      lowSeverity: allPredictions.filter(p => p.severity === 'low').length,
+    };
+  }, [processPredictions]);
+
   return (
-    <Box>
-      <style>{`
-        @keyframes pulse {
-          0% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.7; transform: scale(1.05); }
-          100% { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
+    <Fade in={true} timeout={600}>
+      <Box>
+        {/* Add CSS animations */}
+        <style jsx global>{`
+          @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+          @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+            100% { transform: translateY(0px); }
+          }
+          @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+          }
+          @keyframes slideIn {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+          }
+        `}</style>
 
-      <Typography variant="h4" gutterBottom>
-        Process List with AI Predictions
-      </Typography>
-      
-      {/* AI Service Status Alert */}
-      {aiServiceStatus.lastError && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {aiServiceStatus.lastError}
-        </Alert>
-      )}
-      
-      {/* AI Prediction Controls */}
-      <Paper sx={{ p: 2, mb: 3, backgroundColor: 'rgba(103, 58, 183, 0.1)' }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box display="flex" alignItems="center" gap={2}>
-            <PsychologyIcon color="secondary" />
-            <Box>
-              <Typography variant="h6">
-                AI Process Behavior Predictions
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {geminiService.enabled 
-                  ? 'Predict CPU spikes, crashes, and hangs before they happen'
-                  : 'Gemini AI disabled. Check API key configuration.'}
-              </Typography>
+        {/* Header Section with Gradient */}
+        <Box mb={4}>
+          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+            <Box display="flex" alignItems="center" gap={2}>
+              <Avatar sx={{ 
+                width: 56, 
+                height: 56, 
+                background: `linear-gradient(135deg, ${theme.palette.secondary.main} 0%, ${theme.palette.primary.main} 100%)`,
+                animation: 'float 3s ease-in-out infinite'
+              }}>
+                <PsychologyIcon sx={{ fontSize: 28 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="h4" fontWeight="bold" sx={{ 
+                  background: `linear-gradient(135deg, ${theme.palette.secondary.main} 30%, ${theme.palette.primary.main} 90%)`,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  mb: 0.5
+                }}>
+                  AI-Powered Process Intelligence
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Real-time behavior prediction and anomaly detection
+                </Typography>
+              </Box>
             </Box>
-          </Box>
-          
-          <Box display="flex" gap={1}>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<PsychologyIcon />}
-              onClick={predictAllHighRisk}
-              disabled={analyzing || !geminiService.enabled}
-              color="secondary"
-            >
-              {analyzing ? 'Analyzing...' : 'Predict High-Risk'}
-            </Button>
-          </Box>
-        </Box>
-        
-        {analyzing && (
-          <Box mt={2}>
-            <LinearProgress />
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-              Analyzing process patterns...
-            </Typography>
-          </Box>
-        )}
-      </Paper>
-
-      {/* CURRENTLY ANALYZING SECTION */}
-      {currentlyAnalyzing.length > 0 && (
-        <Paper sx={{ 
-          p: 2, 
-          mb: 3, 
-          backgroundColor: 'rgba(33, 150, 243, 0.1)', 
-          border: '1px solid rgba(33, 150, 243, 0.3)',
-          animation: 'fadeIn 0.3s ease-in'
-        }}>
-          <style>{`
-            @keyframes fadeIn {
-              from { opacity: 0; transform: translateY(-10px); }
-              to { opacity: 1; transform: translateY(0); }
-            }
-          `}</style>
-          
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-            <Box display="flex" alignItems="center" gap={1}>
-              <TimelineIcon sx={{ color: '#2196f3' }} />
-              <Typography variant="h6" sx={{ color: '#2196f3' }}>
-                Currently Analyzing
-              </Typography>
-              <Chip 
-                label={`${currentlyAnalyzing.length} process${currentlyAnalyzing.length > 1 ? 'es' : ''}`}
-                size="small"
+            <Box display="flex" alignItems="center" gap={2}>
+              <Chip
+                icon={<AutoAwesomeIcon />}
+                label={`${processes.length} Processes`}
                 color="primary"
                 variant="outlined"
+                sx={{ fontWeight: 'bold' }}
               />
-            </Box>
-            <Typography variant="caption" color="text.secondary">
-              Real-time AI analysis in progress
-            </Typography>
-          </Box>
-          
-          <Grid container spacing={1}>
-            {currentlyAnalyzing.map((process) => (
-              <Grid item xs={12} sm={6} md={4} key={process.pid}>
-                <Box sx={{ 
-                  p: 1.5, 
-                  backgroundColor: 'rgba(33, 150, 243, 0.05)', 
-                  borderRadius: 1,
-                  border: '1px solid rgba(33, 150, 243, 0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  transition: 'all 0.2s',
+              <IconButton 
+                onClick={predictAllHighRisk}
+                disabled={analyzing || !geminiService.enabled}
+                sx={{
+                  background: `linear-gradient(135deg, ${theme.palette.secondary.main} 0%, ${theme.palette.primary.main} 100%)`,
+                  color: 'white',
                   '&:hover': {
-                    backgroundColor: 'rgba(33, 150, 243, 0.08)',
-                  }
-                }}>
-                  <Box sx={{ maxWidth: '70%' }}>
-                    <Typography variant="body2" fontWeight="medium" noWrap>
-                      {process.name}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      PID: {process.pid}
-                    </Typography>
+                    background: `linear-gradient(135deg, ${theme.palette.secondary.dark} 0%, ${theme.palette.primary.dark} 100%)`,
+                    transform: 'translateY(-2px)',
+                    boxShadow: `0 8px 25px ${alpha(theme.palette.primary.main, 0.4)}`
+                  },
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <RocketIcon />
+              </IconButton>
+            </Box>
+          </Box>
+
+          {/* AI Service Status Banner */}
+          <Slide direction="down" in={aiServiceStatus.lastError} timeout={500}>
+            <Alert 
+              severity="warning" 
+              sx={{ 
+                mb: 2,
+                borderRadius: 2,
+                background: `linear-gradient(135deg, ${alpha(theme.palette.warning.main, 0.1)} 0%, transparent 100%)`,
+                border: `1px solid ${alpha(theme.palette.warning.main, 0.2)}`
+              }}
+              icon={<SecurityIcon />}
+            >
+              <Typography variant="body2">
+                {aiServiceStatus.lastError}
+              </Typography>
+            </Alert>
+          </Slide>
+
+          {/* Prediction Stats Overview */}
+          <Grid container spacing={2} mb={3}>
+            <Grid item xs={12} md={3}>
+              <Card sx={{ 
+                background: `linear-gradient(135deg, ${alpha(theme.palette.info.main, 0.9)} 0%, ${alpha(theme.palette.info.dark, 0.8)} 100%)`,
+                color: 'white',
+                borderRadius: 3,
+                boxShadow: `0 8px 32px ${alpha(theme.palette.info.main, 0.3)}`,
+                position: 'relative',
+                overflow: 'hidden',
+                '&:before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: '4px',
+                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)',
+                  animation: 'shimmer 2s infinite'
+                }
+              }}>
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                        AI Predictions
+                      </Typography>
+                      <Typography variant="h4" fontWeight="bold">
+                        {predictionStats.totalPredictions}
+                      </Typography>
+                    </Box>
+                    <InsightsIcon sx={{ fontSize: 40, opacity: 0.8 }} />
                   </Box>
-                  
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <PulsingAiIcon size={20} iconSize={12} />
-                    <Typography variant="caption" color="text.secondary" fontWeight="medium">
-                      {getAnalysisDuration(process.startTime)}
-                    </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12} md={3}>
+              <Card sx={{ 
+                background: `linear-gradient(135deg, ${alpha(theme.palette.error.main, 0.9)} 0%, ${alpha(theme.palette.error.dark, 0.8)} 100%)`,
+                color: 'white',
+                borderRadius: 3,
+                boxShadow: `0 8px 32px ${alpha(theme.palette.error.main, 0.3)}`
+              }}>
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                        High Risk
+                      </Typography>
+                      <Typography variant="h4" fontWeight="bold">
+                        {predictionStats.highSeverity}
+                      </Typography>
+                    </Box>
+                    <WarningIcon sx={{ fontSize: 40, opacity: 0.8 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12} md={3}>
+              <Card sx={{ 
+                background: `linear-gradient(135deg, ${alpha(theme.palette.warning.main, 0.9)} 0%, ${alpha(theme.palette.warning.dark, 0.8)} 100%)`,
+                color: 'white',
+                borderRadius: 3,
+                boxShadow: `0 8px 32px ${alpha(theme.palette.warning.main, 0.3)}`
+              }}>
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                        Medium Risk
+                      </Typography>
+                      <Typography variant="h4" fontWeight="bold">
+                        {predictionStats.mediumSeverity}
+                      </Typography>
+                    </Box>
+                    <TimelineIcon sx={{ fontSize: 40, opacity: 0.8 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12} md={3}>
+              <Card sx={{ 
+                background: `linear-gradient(135deg, ${alpha(theme.palette.success.main, 0.9)} 0%, ${alpha(theme.palette.success.dark, 0.8)} 100%)`,
+                color: 'white',
+                borderRadius: 3,
+                boxShadow: `0 8px 32px ${alpha(theme.palette.success.main, 0.3)}`
+              }}>
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                        Processes Analyzed
+                      </Typography>
+                      <Typography variant="h4" fontWeight="bold">
+                        {Object.keys(processPredictions).length}
+                      </Typography>
+                    </Box>
+                    <PsychologyIcon sx={{ fontSize: 40, opacity: 0.8 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </Box>
+
+        {/* CURRENTLY ANALYZING SECTION - Enhanced */}
+        {currentlyAnalyzing.length > 0 && (
+          <Zoom in={true}>
+            <Card sx={{ 
+              mb: 3, 
+              borderRadius: 3,
+              background: `linear-gradient(135deg, ${alpha(theme.palette.secondary.main, 0.1)} 0%, ${alpha(theme.palette.primary.main, 0.05)} 100%)`,
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+              boxShadow: `0 8px 32px ${alpha(theme.palette.primary.main, 0.1)}`
+            }}>
+              <CardContent>
+                <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <Box sx={{ 
+                      width: 40, 
+                      height: 40, 
+                      borderRadius: '50%', 
+                      background: `linear-gradient(135deg, ${theme.palette.secondary.main} 0%, ${theme.palette.primary.main} 100%)`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      animation: 'pulse 2s infinite'
+                    }}>
+                      <TimelineIcon sx={{ color: 'white', fontSize: 20 }} />
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" fontWeight="bold" color="primary">
+                        Active AI Analysis
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Real-time predictive modeling in progress
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <Chip 
+                      label={`${currentlyAnalyzing.length} active`}
+                      size="small"
+                      color="primary"
+                      icon={<AutoAwesomeIcon />}
+                      sx={{ fontWeight: 'bold' }}
+                    />
+                    <CircularProgress 
+                      size={20} 
+                      thickness={4}
+                      sx={{ color: theme.palette.primary.main }}
+                    />
                   </Box>
                 </Box>
-              </Grid>
-            ))}
-          </Grid>
-          
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            {geminiService.enabled 
-              ? 'AI is analyzing process behavior patterns to predict future issues...'
-              : 'Using fallback analysis (Gemini AI not enabled)'}
-          </Typography>
-        </Paper>
-      )}
-      
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h6">
-            Running Processes ({processes.length})
-            {Object.keys(processPredictions).length > 0 && (
-              <Chip 
-                label={`${Object.keys(processPredictions).length} processes analyzed`}
-                size="small"
-                color="secondary"
-                sx={{ ml: 2 }}
-              />
-            )}
-          </Typography>
-          
-          <TextField
-            placeholder="Search processes..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            size="small"
-            sx={{ width: 300 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon />
-                </InputAdornment>
-              ),
-              endAdornment: searchTerm && (
-                <InputAdornment position="end">
-                  <IconButton size="small" onClick={handleSearchClear}>
-                    <ClearIcon />
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-        </Box>
-        
-        <TableContainer sx={{ maxHeight: 600 }}>
-          <Table stickyHeader size="small">
-            <TableHead>
-              <TableRow>
-                <SortableHeader column="pid" label="PID" />
-                <SortableHeader column="name" label="Name" />
-                <SortableHeader column="cpuUsage" label="CPU Usage" />
-                <SortableHeader column="memoryUsage" label="Memory" />
-                <SortableHeader column="threadCount" label="Threads" />
-                <TableCell>Risk Score</TableCell>
-                <TableCell>AI Predictions</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredProcesses.slice(0, 50).map((process) => {
-                const riskScore = calculateRiskScore(process);
-                const predictions = processPredictions[process.pid]?.predictions || [];
-                const isCurrentlyAnalyzing = currentlyAnalyzing.some(p => p.pid === process.pid);
                 
-                return (
-                  <TableRow 
-                    key={process.pid} 
-                    hover 
-                    sx={{
-                      backgroundColor: riskScore > 60 ? 'rgba(255, 68, 68, 0.05)' : 
-                                      riskScore > 30 ? 'rgba(255, 187, 51, 0.05)' : 'inherit',
-                      '&:hover': {
-                        backgroundColor: riskScore > 60 ? 'rgba(255, 68, 68, 0.08)' : 
-                                        riskScore > 30 ? 'rgba(255, 187, 51, 0.08)' : 'rgba(0, 0, 0, 0.04)',
-                      }
-                    }}
-                  >
-                    <TableCell>{process.pid}</TableCell>
-                    <TableCell>
-                      <Typography variant="body2" noWrap sx={{ maxWidth: 150 }}>
-                        {process.name}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Box display="flex" alignItems="center">
-                        <CpuIcon fontSize="small" sx={{ mr: 1, color: getProcessStatusColor(process.cpuUsage) }} />
-                        {formatPercentage(process.cpuUsage)}
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Box display="flex" alignItems="center">
-                        <MemoryIcon fontSize="small" sx={{ mr: 1 }} />
-                        {formatBytes(process.memoryUsage)}
-                      </Box>
-                    </TableCell>
-                    <TableCell>{process.threadCount}</TableCell>
-                    <TableCell>
-                      <Tooltip title={`Risk Score: ${riskScore}/100`}>
-                        <Box
-                          sx={{
-                            width: 60,
-                            height: 8,
-                            backgroundColor: '#e0e0e0',
-                            borderRadius: 4,
-                            overflow: 'hidden',
-                            position: 'relative'
+                <Grid container spacing={1.5}>
+                  {currentlyAnalyzing.map((process) => (
+                    <Grid item xs={12} sm={6} md={4} lg={3} key={process.pid}>
+                      <Grow in={true}>
+                        <Card 
+                          variant="outlined"
+                          sx={{ 
+                            p: 1.5,
+                            borderRadius: 2,
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            borderColor: alpha(theme.palette.primary.main, 0.3),
+                            '&:hover': {
+                              borderColor: theme.palette.primary.main,
+                              background: alpha(theme.palette.primary.main, 0.05),
+                              transform: 'translateY(-2px)',
+                              transition: 'all 0.3s ease'
+                            }
                           }}
                         >
-                          <Box
-                            sx={{
-                              width: `${riskScore}%`,
-                              height: '100%',
-                              backgroundColor: 
-                                riskScore > 60 ? '#ff4444' : 
-                                riskScore > 30 ? '#ffbb33' : '#00C851',
-                              transition: 'width 0.3s ease'
+                          <Box display="flex" alignItems="center" justifyContent="space-between">
+                            <Box sx={{ maxWidth: '70%' }}>
+                              <Typography variant="body2" fontWeight="medium" noWrap sx={{ color: theme.palette.primary.main }}>
+                                {process.name}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                PID: {process.pid}
+                              </Typography>
+                            </Box>
+                            
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <PulsingAiIcon size={24} iconSize={12} color={theme.palette.secondary.main} />
+                              <Typography variant="caption" fontWeight="bold" color="secondary">
+                                {getAnalysisDuration(process.startTime)}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Card>
+                      </Grow>
+                    </Grid>
+                  ))}
+                </Grid>
+                
+                <Box mt={2} display="flex" alignItems="center" gap={1}>
+                  <PsychologyIcon fontSize="small" sx={{ color: theme.palette.secondary.main }} />
+                  <Typography variant="caption" color="text.secondary">
+                    {geminiService.enabled 
+                      ? 'AI is analyzing patterns to predict potential system impacts...'
+                      : 'Using advanced fallback analysis algorithms'}
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Zoom>
+        )}
+
+        {/* Main Process Table Section */}
+        <Card sx={{ 
+          mb: 3, 
+          borderRadius: 3,
+          boxShadow: `0 8px 40px ${alpha(theme.palette.common.black, 0.12)}`,
+          overflow: 'hidden'
+        }}>
+          <Box sx={{ 
+            p: 3, 
+            background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, transparent 100%)`,
+            borderBottom: `1px solid ${alpha(theme.palette.divider, 0.2)}`
+          }}>
+            <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+              <Typography variant="h6" fontWeight="bold" display="flex" alignItems="center" gap={1}>
+                <SpeedIcon />
+                Live Process Monitor
+                <Badge 
+                  badgeContent={processes.length} 
+                  color="primary"
+                  sx={{ ml: 1 }}
+                />
+              </Typography>
+              
+              <Box display="flex" alignItems="center" gap={2}>
+                <Paper
+                  component="form"
+                  sx={{ 
+                    p: '2px 4px', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    width: 300,
+                    borderRadius: 2,
+                    boxShadow: `0 2px 8px ${alpha(theme.palette.common.black, 0.08)}`
+                  }}
+                >
+                  <InputAdornment position="start" sx={{ pl: 1 }}>
+                    <SearchIcon sx={{ color: 'text.secondary' }} />
+                  </InputAdornment>
+                  <TextField
+                    placeholder="Search processes..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    size="small"
+                    variant="standard"
+                    sx={{ ml: 1, flex: 1 }}
+                    InputProps={{ disableUnderline: true }}
+                  />
+                  {searchTerm && (
+                    <IconButton size="small" onClick={handleSearchClear}>
+                      <ClearIcon />
+                    </IconButton>
+                  )}
+                </Paper>
+              </Box>
+            </Box>
+          </Box>
+          
+          <TableContainer sx={{ maxHeight: 600 }}>
+            <Table stickyHeader size="small">
+              <TableHead>
+                <TableRow sx={{ 
+                  background: `linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.05)} 0%, transparent 100%)`
+                }}>
+                  <SortableHeader column="pid" label="PID" />
+                  <SortableHeader column="name" label="Process Name" />
+                  <SortableHeader column="cpuUsage" label="CPU" />
+                  <SortableHeader column="memoryUsage" label="Memory" />
+                  <SortableHeader column="threadCount" label="Threads" />
+                  <TableCell sx={{ fontWeight: 'bold' }}>Risk Score</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold' }}>AI Predictions</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredProcesses.slice(0, 50).map((process, index) => {
+                  const riskScore = calculateRiskScore(process);
+                  const predictions = processPredictions[process.pid]?.predictions || [];
+                  const isCurrentlyAnalyzing = currentlyAnalyzing.some(p => p.pid === process.pid);
+                  const hasHighRiskPredictions = predictions.some(p => p.severity === 'high');
+                  
+                  return (
+                    <Fade in={true} key={process.pid} timeout={index * 100}>
+                      <TableRow 
+                        hover 
+                        sx={{
+                          animation: 'slideIn 0.3s ease-out',
+                          background: hasHighRiskPredictions 
+                            ? `linear-gradient(90deg, ${alpha(theme.palette.error.main, 0.05)} 0%, transparent 100%)` 
+                            : riskScore > 60 
+                              ? `linear-gradient(90deg, ${alpha(theme.palette.warning.main, 0.05)} 0%, transparent 100%)`
+                              : 'inherit',
+                          '&:hover': {
+                            background: hasHighRiskPredictions 
+                              ? `linear-gradient(90deg, ${alpha(theme.palette.error.main, 0.08)} 0%, transparent 100%)` 
+                              : riskScore > 60 
+                                ? `linear-gradient(90deg, ${alpha(theme.palette.warning.main, 0.08)} 0%, transparent 100%)`
+                                : alpha(theme.palette.action.hover, 0.05),
+                          },
+                          borderLeft: hasHighRiskPredictions 
+                            ? `4px solid ${theme.palette.error.main}`
+                            : riskScore > 60 
+                              ? `4px solid ${theme.palette.warning.main}`
+                              : 'none'
+                        }}
+                      >
+                        <TableCell>
+                          <Typography variant="body2" fontWeight="medium">
+                            {process.pid}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Box display="flex" alignItems="center" gap={1.5}>
+                            <Avatar sx={{ 
+                              width: 28, 
+                              height: 28,
+                              fontSize: 12,
+                              background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`
+                            }}>
+                              {process.name.charAt(0).toUpperCase()}
+                            </Avatar>
+                            <Typography variant="body2" fontWeight="medium" noWrap sx={{ maxWidth: 180 }}>
+                              {process.name}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <Box sx={{ 
+                              width: 24, 
+                              height: 24, 
+                              borderRadius: '50%', 
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: alpha(getProcessStatusColor(process.cpuUsage), 0.1)
+                            }}>
+                              <CpuIcon fontSize="small" sx={{ color: getProcessStatusColor(process.cpuUsage) }} />
+                            </Box>
+                            <Typography variant="body2" fontWeight="bold">
+                              {formatPercentage(process.cpuUsage)}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <Box sx={{ 
+                              width: 24, 
+                              height: 24, 
+                              borderRadius: '50%', 
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: alpha(theme.palette.info.main, 0.1)
+                            }}>
+                              <MemoryIcon fontSize="small" sx={{ color: theme.palette.info.main }} />
+                            </Box>
+                            <Typography variant="body2" fontWeight="medium">
+                              {formatBytes(process.memoryUsage)}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={process.threadCount}
+                            size="small"
+                            variant="outlined"
+                            sx={{ 
+                              fontWeight: 'bold',
+                              borderColor: alpha(theme.palette.primary.main, 0.3)
                             }}
                           />
-                        </Box>
-                      </Tooltip>
-                      <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
-                        {riskScore}/100
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {predictions.length > 0 ? (
+                        </TableCell>
+                        <TableCell>
+                          <Tooltip title={`Risk Score: ${riskScore}/100`}>
+                            <Box sx={{ position: 'relative' }}>
+                              <Box
+                                sx={{
+                                  width: '100%',
+                                  height: 8,
+                                  backgroundColor: alpha(theme.palette.grey[300], 0.3),
+                                  borderRadius: 4,
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                <Box
+                                  sx={{
+                                    width: `${riskScore}%`,
+                                    height: '100%',
+                                    background: `linear-gradient(90deg, ${
+                                      riskScore > 60 ? theme.palette.error.main : 
+                                      riskScore > 30 ? theme.palette.warning.main : 
+                                      theme.palette.success.main
+                                    } 0%, ${
+                                      alpha(riskScore > 60 ? theme.palette.error.main : 
+                                      riskScore > 30 ? theme.palette.warning.main : 
+                                      theme.palette.success.main, 0.8)
+                                    } 100%)`,
+                                    borderRadius: 4,
+                                    transition: 'width 0.5s ease'
+                                  }}
+                                />
+                              </Box>
+                              <Typography variant="caption" fontWeight="bold" sx={{ 
+                                position: 'absolute', 
+                                right: 0, 
+                                top: '50%', 
+                                transform: 'translateY(-50%)',
+                                color: riskScore > 60 ? theme.palette.error.main : 
+                                      riskScore > 30 ? theme.palette.warning.main : 
+                                      theme.palette.success.main
+                              }}>
+                                {riskScore}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell>
+                          {predictions.length > 0 ? (
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                              {predictions.slice(0, 3).map((pred, idx) => (
+                                <Chip
+                                  key={idx}
+                                  label={pred.type?.replace('_', ' ')}
+                                  size="small"
+                                  icon={getPredictionIcon(pred.type)}
+                                  sx={{
+                                    background: `linear-gradient(135deg, ${getPredictionSeverityColor(pred.severity)} 0%, ${alpha(getPredictionSeverityColor(pred.severity), 0.8)} 100%)`,
+                                    color: 'white',
+                                    fontSize: '0.65rem',
+                                    height: 22,
+                                    fontWeight: 'bold',
+                                    boxShadow: `0 2px 8px ${alpha(getPredictionSeverityColor(pred.severity), 0.3)}`
+                                  }}
+                                />
+                              ))}
+                              {predictions.length > 3 && (
+                                <Chip
+                                  label={`+${predictions.length - 3}`}
+                                  size="small"
+                                  sx={{
+                                    background: alpha(theme.palette.primary.main, 0.1),
+                                    color: theme.palette.primary.main,
+                                    fontWeight: 'bold'
+                                  }}
+                                />
+                              )}
+                            </Stack>
+                          ) : isCurrentlyAnalyzing ? (
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <PulsingAiIcon size={20} iconSize={10} />
+                              <Typography variant="caption" fontWeight="bold" color="secondary">
+                                Analyzing...
+                              </Typography>
+                            </Box>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary" fontStyle="italic">
+                              Ready for analysis
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="small"
+                            variant={isCurrentlyAnalyzing ? "contained" : "outlined"}
+                            startIcon={
+                              isCurrentlyAnalyzing ? (
+                                <PulsingAiIcon size={16} iconSize={8} />
+                              ) : (
+                                <PsychologyIcon fontSize="small" />
+                              )
+                            }
+                            onClick={() => predictProcessBehavior(process)}
+                            disabled={analyzing || isCurrentlyAnalyzing || !geminiService.enabled}
+                            sx={{
+                              minWidth: 110,
+                              borderRadius: 2,
+                              textTransform: 'none',
+                              fontWeight: 'bold',
+                              background: isCurrentlyAnalyzing 
+                                ? `linear-gradient(135deg, ${theme.palette.secondary.main} 0%, ${theme.palette.primary.main} 100%)` 
+                                : 'transparent',
+                              borderColor: isCurrentlyAnalyzing ? 'transparent' : theme.palette.primary.main,
+                              color: isCurrentlyAnalyzing ? 'white' : theme.palette.primary.main,
+                              '&:hover': {
+                                background: isCurrentlyAnalyzing 
+                                  ? `linear-gradient(135deg, ${theme.palette.secondary.dark} 0%, ${theme.palette.primary.dark} 100%)`
+                                  : alpha(theme.palette.primary.main, 0.1),
+                                transform: 'translateY(-2px)',
+                                boxShadow: isCurrentlyAnalyzing 
+                                  ? `0 4px 12px ${alpha(theme.palette.primary.main, 0.4)}`
+                                  : `0 2px 8px ${alpha(theme.palette.primary.main, 0.2)}`
+                              },
+                              transition: 'all 0.3s ease'
+                            }}
+                          >
+                            {isCurrentlyAnalyzing ? 'Analyzing...' : 'AI Analyze'}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    </Fade>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          
+          {filteredProcesses.length === 0 && (
+            <Box textAlign="center" py={8}>
+              <AutoAwesomeIcon sx={{ fontSize: 60, color: 'text.secondary', opacity: 0.3, mb: 2 }} />
+              <Typography variant="h6" color="text.secondary">
+                No processes match your search
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Try a different search term or check your filters
+              </Typography>
+            </Box>
+          )}
+        </Card>
+
+        {/* Bottom Dashboard Section */}
+        <Grid container spacing={3}>
+          {/* Recent Predictions Panel */}
+          <Grid item xs={12} md={6}>
+            <Card sx={{ 
+              borderRadius: 3,
+              height: '100%',
+              boxShadow: `0 8px 32px ${alpha(theme.palette.common.black, 0.08)}`
+            }}>
+              <CardContent>
+                <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
+                  <Typography variant="h6" fontWeight="bold" display="flex" alignItems="center" gap={1}>
+                    <BarChartIcon />
+                    Recent AI Predictions
+                  </Typography>
+                  <Chip 
+                    label={`${predictionHistory.length} total`}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                  />
+                </Box>
+                
+                {predictionHistory.slice(-5).reverse().map((history, idx) => (
+                  <Grow in={true} key={idx} timeout={(idx + 1) * 200}>
+                    <Card 
+                      variant="outlined" 
+                      sx={{ 
+                        mb: 2, 
+                        p: 2, 
+                        borderRadius: 2,
+                        borderColor: alpha(theme.palette.primary.main, 0.2),
+                        background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.8)} 0%, transparent 100%)`,
+                        '&:hover': {
+                          borderColor: theme.palette.primary.main,
+                          transform: 'translateX(4px)',
+                          transition: 'all 0.3s ease'
+                        }
+                      }}
+                    >
+                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                         <Box>
-                          {predictions.slice(0, 2).map((pred, idx) => (
+                          <Typography variant="body2" fontWeight="bold" color="primary">
+                            {history.processName}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            PID: {history.pid}
+                          </Typography>
+                        </Box>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <PsychologyIcon fontSize="small" sx={{ color: theme.palette.secondary.main }} />
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(history.timestamp).toLocaleTimeString()}
+                          </Typography>
+                        </Box>
+                      </Box>
+                      
+                      <Box mb={1.5}>
+                        <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+                          AI Insights ({history.predictions.length})
+                        </Typography>
+                        <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                          {history.predictions.map((pred, pIdx) => (
                             <Chip
-                              key={idx}
-                              label={pred.type?.replace('_', ' ') || 'Prediction'}
+                              key={pIdx}
+                              label={`${pred.type?.replace('_', ' ')} (${pred.confidence}%)`}
                               size="small"
-                              icon={getPredictionIcon(pred.type)}
                               sx={{
-                                backgroundColor: getPredictionSeverityColor(pred.severity),
+                                background: getPredictionSeverityColor(pred.severity),
                                 color: 'white',
-                                fontSize: '0.65rem',
-                                height: 20,
-                                mr: 0.5,
-                                mb: 0.5
+                                fontSize: '0.6rem',
+                                height: 18,
+                                fontWeight: 'bold'
                               }}
                             />
                           ))}
-                          {predictions.length > 2 && (
-                            <Typography variant="caption" color="text.secondary">
-                              +{predictions.length - 2} more
-                            </Typography>
-                          )}
-                        </Box>
-                      ) : isCurrentlyAnalyzing ? (
-                        <Box display="flex" alignItems="center" gap={0.5}>
-                          <PulsingAiIcon size={16} iconSize={8} />
-                          <Typography variant="caption" color="#2196f3" fontWeight="medium">
-                            Analyzing...
-                          </Typography>
-                        </Box>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          Not analyzed
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={
-                          isCurrentlyAnalyzing ? (
-                            <PulsingAiIcon size={16} iconSize={8} />
-                          ) : (
-                            <PsychologyIcon fontSize="small" />
-                          )
-                        }
-                        onClick={() => predictProcessBehavior(process)}
-                        disabled={analyzing || isCurrentlyAnalyzing || !geminiService.enabled}
-                        sx={{
-                          minWidth: 100,
-                          backgroundColor: isCurrentlyAnalyzing 
-                            ? 'rgba(33, 150, 243, 0.1)' 
-                            : 'transparent',
-                          borderColor: isCurrentlyAnalyzing ? '#2196f3' : undefined,
-                          color: isCurrentlyAnalyzing ? '#2196f3' : undefined,
-                          '&:hover': {
-                            backgroundColor: isCurrentlyAnalyzing 
-                              ? 'rgba(33, 150, 243, 0.15)' 
-                              : undefined,
-                          }
-                        }}
-                      >
-                        {isCurrentlyAnalyzing ? 'Analyzing...' : 'Analyze'}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        
-        {filteredProcesses.length === 0 && (
-          <Box textAlign="center" py={4}>
-            <Typography color="text.secondary">
-              No processes found matching your search
-            </Typography>
-          </Box>
-        )}
-      </Paper>
-
-      {/* Prediction History & Analysis */}
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              Recent Predictions
-            </Typography>
-            {predictionHistory.slice(-5).reverse().map((history, idx) => (
-              <Box key={idx} sx={{ mb: 1.5, p: 1.5, backgroundColor: 'rgba(0, 0, 0, 0.1)', borderRadius: 1 }}>
-                <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
-                  <Typography variant="body2" fontWeight="medium">
-                    {history.processName} (PID: {history.pid})
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {new Date(history.timestamp).toLocaleTimeString()}
-                  </Typography>
-                </Box>
-                <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
-                  {history.predictions.length} prediction(s)
-                </Typography>
-                <Box display="flex" gap={0.5} flexWrap="wrap">
-                  {history.predictions.map((pred, pIdx) => (
-                    <Chip
-                      key={pIdx}
-                      label={`${pred.type?.replace('_', ' ') || 'Prediction'} (${pred.confidence}%)`}
-                      size="small"
-                      sx={{
-                        backgroundColor: getPredictionSeverityColor(pred.severity),
-                        color: 'white',
-                        fontSize: '0.6rem',
-                        height: 18
-                      }}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            ))}
-            {predictionHistory.length === 0 && (
-              <Typography color="text.secondary" align="center" py={2}>
-                No prediction history yet
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              High-Risk Processes
-            </Typography>
-            {processes
-              .filter(p => calculateRiskScore(p) > 60)
-              .slice(0, 5)
-              .map((process) => {
-                const predictions = processPredictions[process.pid]?.predictions || [];
-                const isCurrentlyAnalyzing = currentlyAnalyzing.some(p => p.pid === process.pid);
-                
-                return (
-                  <Box key={process.pid} sx={{ 
-                    mb: 2, 
-                    p: 1.5, 
-                    backgroundColor: 'rgba(255, 68, 68, 0.1)', 
-                    borderRadius: 1,
-                    border: '1px solid rgba(255, 68, 68, 0.2)'
-                  }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
-                      <Typography variant="body2" fontWeight="medium">
-                        {process.name}
-                      </Typography>
-                      <Box display="flex" alignItems="center" gap={0.5}>
-                        {isCurrentlyAnalyzing && <PulsingAiIcon size={16} iconSize={8} />}
-                        <Chip
-                          label={isCurrentlyAnalyzing ? "Analyzing" : "High Risk"}
-                          size="small"
-                          sx={{ 
-                            backgroundColor: isCurrentlyAnalyzing ? '#2196f3' : '#ff4444', 
-                            color: 'white' 
-                          }}
-                        />
+                        </Stack>
                       </Box>
-                    </Box>
-                    <Box display="flex" justifyContent="space-between" mb={1}>
-                      <Typography variant="caption">
-                        CPU: {formatPercentage(process.cpuUsage)}
-                      </Typography>
-                      <Typography variant="caption">
-                        Memory: {formatBytes(process.memoryUsage)}
-                      </Typography>
-                      <Typography variant="caption">
-                        Threads: {process.threadCount}
-                      </Typography>
-                    </Box>
-                    {predictions.length > 0 ? (
-                      <Alert severity="warning" sx={{ py: 0, fontSize: '0.75rem' }}>
-                        {predictions[0].message}
-                      </Alert>
-                    ) : isCurrentlyAnalyzing ? (
-                      <Alert severity="info" sx={{ py: 0, fontSize: '0.75rem' }}>
-                        AI analysis in progress...
-                      </Alert>
-                    ) : (
-                      <Button
-                        size="small"
-                        variant="contained"
-                        startIcon={<PsychologyIcon />}
-                        onClick={() => predictProcessBehavior(process)}
-                        sx={{ mt: 1 }}
-                        color="warning"
-                        disabled={!geminiService.enabled}
-                      >
-                        Analyze Risk
-                      </Button>
-                    )}
+                      
+                      {history.predictions[0] && (
+                        <Alert 
+                          severity={history.predictions[0].severity}
+                          icon={getPredictionIcon(history.predictions[0].type)}
+                          sx={{ 
+                            py: 0.5, 
+                            fontSize: '0.75rem',
+                            borderRadius: 1,
+                            background: alpha(
+                              getPredictionSeverityColor(history.predictions[0].severity), 
+                              0.1
+                            )
+                          }}
+                        >
+                          {history.predictions[0].message}
+                        </Alert>
+                      )}
+                    </Card>
+                  </Grow>
+                ))}
+                
+                {predictionHistory.length === 0 && (
+                  <Box textAlign="center" py={4}>
+                    <PsychologyIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.3, mb: 2 }} />
+                    <Typography variant="body1" color="text.secondary">
+                      No predictions yet
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Click "AI Analyze" on any process to begin
+                    </Typography>
                   </Box>
-                );
-              })}
-            {processes.filter(p => calculateRiskScore(p) > 60).length === 0 && (
-              <Typography color="text.secondary" align="center" py={2}>
-                No high-risk processes detected
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
 
-      {/* Process Statistics - Updated with prediction stats */}
-      <Grid container spacing={3} sx={{ mt: 1 }}>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Top CPU Processes
-            </Typography>
-            {processes
-              .sort((a, b) => b.cpuUsage - a.cpuUsage)
-              .slice(0, 5)
-              .map((process, index) => (
-                <Box key={process.pid} sx={{ mb: 1, p: 1, backgroundColor: 'rgba(0, 0, 0, 0.1)', borderRadius: 1 }}>
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" noWrap sx={{ maxWidth: 150 }}>
-                      {process.name}
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {formatPercentage(process.cpuUsage)}
-                    </Typography>
-                  </Box>
+          {/* High-Risk Process Panel */}
+          <Grid item xs={12} md={6}>
+            <Card sx={{ 
+              borderRadius: 3,
+              height: '100%',
+              boxShadow: `0 8px 32px ${alpha(theme.palette.common.black, 0.08)}`,
+              background: `linear-gradient(135deg, ${alpha(theme.palette.error.main, 0.03)} 0%, transparent 100%)`
+            }}>
+              <CardContent>
+                <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
+                  <Typography variant="h6" fontWeight="bold" display="flex" alignItems="center" gap={1}>
+                    <WarningIcon sx={{ color: theme.palette.error.main }} />
+                    Critical Process Monitor
+                  </Typography>
+                  <Chip 
+                    label="High Alert"
+                    size="small"
+                    color="error"
+                    icon={<SecurityIcon />}
+                    sx={{ fontWeight: 'bold' }}
+                  />
                 </Box>
-              ))}
-          </Paper>
+                
+                {processes
+                  .filter(p => calculateRiskScore(p) > 60)
+                  .slice(0, 5)
+                  .map((process, idx) => {
+                    const predictions = processPredictions[process.pid]?.predictions || [];
+                    const isCurrentlyAnalyzing = currentlyAnalyzing.some(p => p.pid === process.pid);
+                    
+                    return (
+                      <Zoom in={true} key={process.pid} timeout={(idx + 1) * 200}>
+                        <Card 
+                          sx={{ 
+                            mb: 2, 
+                            p: 2, 
+                            borderRadius: 2,
+                            border: `2px solid ${alpha(theme.palette.error.main, 0.3)}`,
+                            background: `linear-gradient(135deg, ${alpha(theme.palette.error.main, 0.1)} 0%, transparent 100%)`,
+                            '&:hover': {
+                              borderColor: theme.palette.error.main,
+                              transform: 'translateY(-2px)',
+                              boxShadow: `0 8px 20px ${alpha(theme.palette.error.main, 0.2)}`,
+                              transition: 'all 0.3s ease'
+                            }
+                          }}
+                        >
+                          <Box display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
+                            <Box display="flex" alignItems="center" gap={1.5}>
+                              <Avatar sx={{ 
+                                width: 32, 
+                                height: 32,
+                                fontSize: 14,
+                                fontWeight: 'bold',
+                                background: `linear-gradient(135deg, ${theme.palette.error.main} 0%, ${theme.palette.warning.main} 100%)`
+                              }}>
+                                {process.name.charAt(0).toUpperCase()}
+                              </Avatar>
+                              <Box>
+                                <Typography variant="body2" fontWeight="bold">
+                                  {process.name}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  PID: {process.pid}
+                                </Typography>
+                              </Box>
+                            </Box>
+                            <Box display="flex" alignItems="center" gap={1}>
+                              {isCurrentlyAnalyzing && <PulsingAiIcon size={20} iconSize={10} color={theme.palette.error.main} />}
+                              <Chip
+                                label={isCurrentlyAnalyzing ? "Analyzing" : "Critical"}
+                                size="small"
+                                sx={{ 
+                                  background: isCurrentlyAnalyzing 
+                                    ? theme.palette.warning.main 
+                                    : `linear-gradient(135deg, ${theme.palette.error.main} 0%, ${theme.palette.error.dark} 100%)`,
+                                  color: 'white',
+                                  fontWeight: 'bold'
+                                }}
+                              />
+                            </Box>
+                          </Box>
+                          
+                          <Grid container spacing={1} mb={2}>
+                            <Grid item xs={4}>
+                              <Box sx={{ 
+                                p: 1, 
+                                background: alpha(theme.palette.error.main, 0.1),
+                                borderRadius: 1,
+                                textAlign: 'center'
+                              }}>
+                                <Typography variant="caption" display="block" color="error.main" fontWeight="bold">
+                                  CPU
+                                </Typography>
+                                <Typography variant="body2" fontWeight="bold">
+                                  {formatPercentage(process.cpuUsage)}
+                                </Typography>
+                              </Box>
+                            </Grid>
+                            <Grid item xs={4}>
+                              <Box sx={{ 
+                                p: 1, 
+                                background: alpha(theme.palette.warning.main, 0.1),
+                                borderRadius: 1,
+                                textAlign: 'center'
+                              }}>
+                                <Typography variant="caption" display="block" color="warning.main" fontWeight="bold">
+                                  Memory
+                                </Typography>
+                                <Typography variant="body2" fontWeight="bold">
+                                  {formatBytes(process.memoryUsage)}
+                                </Typography>
+                              </Box>
+                            </Grid>
+                            <Grid item xs={4}>
+                              <Box sx={{ 
+                                p: 1, 
+                                background: alpha(theme.palette.info.main, 0.1),
+                                borderRadius: 1,
+                                textAlign: 'center'
+                              }}>
+                                <Typography variant="caption" display="block" color="info.main" fontWeight="bold">
+                                  Threads
+                                </Typography>
+                                <Typography variant="body2" fontWeight="bold">
+                                  {process.threadCount}
+                                </Typography>
+                              </Box>
+                            </Grid>
+                          </Grid>
+                          
+                          {predictions.length > 0 ? (
+                            <Alert 
+                              severity="error" 
+                              icon={<WarningIcon />}
+                              sx={{ 
+                                borderRadius: 1,
+                                background: alpha(theme.palette.error.main, 0.1),
+                                border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`
+                              }}
+                            >
+                              <Typography variant="caption" fontWeight="bold">
+                                {predictions[0].message}
+                              </Typography>
+                            </Alert>
+                          ) : isCurrentlyAnalyzing ? (
+                            <Alert 
+                              severity="info"
+                              icon={<PsychologyIcon />}
+                              sx={{ borderRadius: 1 }}
+                            >
+                              <Typography variant="caption">
+                                AI analysis in progress...
+                              </Typography>
+                            </Alert>
+                          ) : (
+                            <Button
+                              fullWidth
+                              size="small"
+                              variant="contained"
+                              startIcon={<PsychologyIcon />}
+                              onClick={() => predictProcessBehavior(process)}
+                              sx={{
+                                background: `linear-gradient(135deg, ${theme.palette.error.main} 0%, ${theme.palette.warning.main} 100%)`,
+                                color: 'white',
+                                fontWeight: 'bold',
+                                borderRadius: 1,
+                                '&:hover': {
+                                  background: `linear-gradient(135deg, ${theme.palette.error.dark} 0%, ${theme.palette.warning.dark} 100%)`,
+                                  transform: 'translateY(-2px)',
+                                  boxShadow: `0 4px 12px ${alpha(theme.palette.error.main, 0.4)}`
+                                }
+                              }}
+                              disabled={!geminiService.enabled}
+                            >
+                              Analyze Critical Risk
+                            </Button>
+                          )}
+                        </Card>
+                      </Zoom>
+                    );
+                  })}
+                
+                {processes.filter(p => calculateRiskScore(p) > 60).length === 0 && (
+                  <Box textAlign="center" py={4}>
+                    <SecurityIcon sx={{ fontSize: 48, color: 'success.main', opacity: 0.5, mb: 2 }} />
+                    <Typography variant="body1" color="success.main" fontWeight="bold">
+                      All systems stable
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      No high-risk processes detected
+                    </Typography>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Prediction Statistics
-            </Typography>
-            <Box sx={{ p: 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                Processes Analyzed
-              </Typography>
-              <Typography variant="h5">
-                {Object.keys(processPredictions).length}
-              </Typography>
-            </Box>
-            <Box sx={{ p: 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                Active Predictions
-              </Typography>
-              <Typography variant="h5">
-                {Object.values(processPredictions).reduce((sum, p) => sum + (p.predictions?.length || 0), 0)}
-              </Typography>
-            </Box>
-            <Box sx={{ p: 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                Currently Analyzing
-              </Typography>
-              <Typography variant="h5">
-                {currentlyAnalyzing.length}
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Process Statistics
-            </Typography>
-            <Box sx={{ p: 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                Total Processes
-              </Typography>
-              <Typography variant="h5">{processes.length}</Typography>
-            </Box>
-            <Box sx={{ p: 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                Running Processes
-              </Typography>
-              <Typography variant="h5">
-                {processes.filter(p => p.state === 'RUNNING').length}
-              </Typography>
-            </Box>
-            <Box sx={{ p: 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                Total Threads
-              </Typography>
-              <Typography variant="h5">
-                {processes.reduce((sum, p) => sum + (p.threadCount || 0), 0)}
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
+      </Box>
+    </Fade>
   );
 };
 

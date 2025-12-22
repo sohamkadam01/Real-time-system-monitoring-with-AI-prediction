@@ -411,6 +411,32 @@
     margin-bottom: 1.5rem; /* mb-6 */
 }
 
+
+/* Auth button styles in header */
+.nav-button.secondary {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #cbd5e1;
+  margin-right: 0.75rem;
+}
+
+.nav-button.secondary:hover {
+  background: rgba(30, 41, 59, 0.8);
+  border-color: #3b82f6;
+}
+
+.nav-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mobile-nav-button.secondary {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #cbd5e1;
+}
+
 @media (min-width: 768px) {
     .footer-content {
         flex-direction: row;

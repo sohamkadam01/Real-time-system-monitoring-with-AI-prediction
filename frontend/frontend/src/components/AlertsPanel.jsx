@@ -32,7 +32,7 @@ import {
 import { systemApi } from '../services/api';
 import { useWebSocket } from '../services/websocket';
 import { getAlertColor } from '../utils/formatters';
-
+import AlertTrendChart from './AlertTrendChart';
 const AlertsPanel = () => {
   const { metrics, aiInsights, analyzing, triggerManualAnalysis, getLastAnalysisText } = useWebSocket();
   const [alerts, setAlerts] = useState([]);

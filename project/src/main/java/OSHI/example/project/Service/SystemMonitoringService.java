@@ -9,6 +9,7 @@ import OSHI.example.project.DTO.AlertDTO;
 import OSHI.example.project.DTO.CpuDetailsDTO;
 import OSHI.example.project.DTO.DashboardDTO;
 import OSHI.example.project.DTO.DiskDTO;
+import OSHI.example.project.DTO.FanDTO;
 import OSHI.example.project.DTO.MemoryDetailsDTO;
 import OSHI.example.project.DTO.NetworkDTO;
 import OSHI.example.project.DTO.ProcessDTO;
@@ -34,48 +35,17 @@ public class SystemMonitoringService {
     private static final double TEMP_WARNING = 70.0;
     private static final double DISK_CRITICAL = 95.0;
     private static final double DISK_WARNING = 90.0;
+    private static final int FAN_CRITICAL = 0;
+    private static final int FAN_WARNING_HIGH = 3000;
+    private static final int FAN_WARNING_LOW = 500;
     
     private long[] previousCpuTicks;
-    
-    // Network tracking for speed calculation
-    private Map<String, NetworkStats> previousNetworkStats = new HashMap<>();
-    private long lastNetworkUpdateTime = System.currentTimeMillis();
-    
-    // Helper class to store previous network statistics
-    private static class NetworkStats {
-        long bytesSent;
-        long bytesRecv;
-        long timestamp;
-
-
-        
-        
-        NetworkStats(long bytesSent, long bytesRecv, long timestamp) {
-            this.bytesSent = bytesSent;
-            this.bytesRecv = bytesRecv;
-            this.timestamp = timestamp;
-        }
-    }
     
     public SystemMonitoringService() {
         this.systemInfo = new SystemInfo();
         this.hardware = systemInfo.getHardware();
         this.os = systemInfo.getOperatingSystem();
         this.previousCpuTicks = hardware.getProcessor().getSystemCpuLoadTicks();
-        
-        // Initialize network statistics on startup
-        initializeNetworkStats();
-    }
-    
-    private void initializeNetworkStats() {
-        previousNetworkStats.clear();
-        for (NetworkIF net : hardware.getNetworkIFs()) {
-            if (!net.getName().contains("Loopback") && !net.getName().contains("lo")) {
-                previousNetworkStats.put(net.getName(), 
-                    new NetworkStats(net.getBytesSent(), net.getBytesRecv(), System.currentTimeMillis()));
-            }
-        }
-        lastNetworkUpdateTime = System.currentTimeMillis();
     }
     
     public SystemMetricsDTO getSystemMetrics() {
@@ -126,55 +96,129 @@ public class SystemMonitoringService {
         dashboard.setSystemUptime(formatUptime(os.getSystemUptime()));
         dashboard.setStatus(getOverallStatus(cpuLoad, memoryUsagePercent));
         
+        // Add fan information to dashboard
+        dashboard.setFanSpeed(getAverageFanSpeed(sensors));
+        dashboard.setFans(getFanDetails(sensors));
+        
         return dashboard;
     }
     
-    private CpuDetailsDTO getCpuDetails(double cpuLoad) {
-        CpuDetailsDTO cpuDetails = new CpuDetailsDTO();
-        CentralProcessor cpu = hardware.getProcessor();
+private CpuDetailsDTO getCpuDetails(double cpuLoad) {
+    CpuDetailsDTO cpuDetails = new CpuDetailsDTO();
+    CentralProcessor cpu = hardware.getProcessor();
+    
+    cpuDetails.setName(cpu.getProcessorIdentifier().getName());
+    cpuDetails.setPhysicalCores(cpu.getPhysicalProcessorCount());
+    cpuDetails.setLogicalCores(cpu.getLogicalProcessorCount());
+    
+    // Get current frequencies - FIXED APPROACH
+    long[] currentFreqs = null;
+    
+    // Try different methods to get frequency
+    try {
+        // Method 1: getCurrentFreq() (Linux/Windows)
+        currentFreqs = cpu.getCurrentFreq();
         
-        cpuDetails.setName(cpu.getProcessorIdentifier().getName());
-        cpuDetails.setPhysicalCores(cpu.getPhysicalProcessorCount());
-        cpuDetails.setLogicalCores(cpu.getLogicalProcessorCount());
-        cpuDetails.setCurrentFrequency(formatHertz(cpu.getProcessorIdentifier().getVendorFreq()));
-        cpuDetails.setMaxFrequency(formatHertz(cpu.getMaxFreq()));
-        
-        // Load averages - IMPROVED: Handle -1 values
-        double[] loadAvg = cpu.getSystemLoadAverage(3);
-        // Create a safe array with default values
-        double[] safeLoadAvg = new double[3];
-        if (loadAvg != null && loadAvg.length >= 3) {
-            // OSHI returns -1 for unavailable load averages
-            safeLoadAvg[0] = loadAvg[0] >= 0 ? loadAvg[0] : 0.0;
-            safeLoadAvg[1] = loadAvg[1] >= 0 ? loadAvg[1] : 0.0;
-            safeLoadAvg[2] = loadAvg[2] >= 0 ? loadAvg[2] : 0.0;
+        // Method 2: If first method fails, try processor identifier
+        if (currentFreqs == null || currentFreqs.length == 0 || currentFreqs[0] < 0) {
+            long vendorFreq = cpu.getProcessorIdentifier().getVendorFreq();
+            if (vendorFreq > 0) {
+                currentFreqs = new long[] {vendorFreq};
+            }
         }
-        cpuDetails.setLoadAverages(safeLoadAvg);
         
-        // Per core usage - FIXED HERE
-        double[] perCoreLoad = new double[0];
-        try {
-            perCoreLoad = cpu.getProcessorCpuLoad(1000);
-        } catch (Exception e) {
-            perCoreLoad = new double[cpu.getLogicalProcessorCount()];
-            double perCore = cpuLoad / 100.0 / perCoreLoad.length;
+        // Method 3: Try getMaxFreq() as fallback
+        if ((currentFreqs == null || currentFreqs.length == 0 || currentFreqs[0] <= 0) && cpu.getMaxFreq() > 0) {
+            currentFreqs = new long[] {cpu.getMaxFreq()};
+        }
+        
+    } catch (Exception e) {
+        System.err.println("Error getting CPU frequency: " + e.getMessage());
+    }
+    
+    // Process frequencies
+    if (currentFreqs != null && currentFreqs.length > 0 && currentFreqs[0] > 0) {
+        List<Long> freqList = new ArrayList<>();
+        long sum = 0;
+        int count = 0;
+        
+        for (int i = 0; i < currentFreqs.length; i++) {
+            long freq = currentFreqs[i];
+            if (freq > 0) {
+                freqList.add(freq);
+                sum += freq;
+                count++;
+                
+                // Debug logging
+                System.out.println("Core " + i + " frequency: " + formatHertz(freq));
+            } else {
+                freqList.add(0L);
+            }
+        }
+        
+        cpuDetails.setCurrentFrequencies(freqList);
+        cpuDetails.setCurrentFrequency(count > 0 ? formatHertz(sum / count) : "N/A");
+        
+        // Also set raw frequency value for first core (for debugging)
+        if (currentFreqs[0] > 0) {
+            cpuDetails.setCurrentFrequencyRaw(currentFreqs[0]);
+        } else {
+            cpuDetails.setCurrentFrequencyRaw(0L);
+        }
+    } else {
+        cpuDetails.setCurrentFrequency("N/A");
+        cpuDetails.setCurrentFrequencyRaw(0L);
+        cpuDetails.setCurrentFrequencies(new ArrayList<>()); // Initialize empty list
+        System.out.println("No valid frequency data available");
+    }
+    
+    long maxFreq = cpu.getMaxFreq();
+    cpuDetails.setMaxFrequencyRaw(maxFreq);
+    cpuDetails.setMaxFrequency(maxFreq > 0 ? formatHertz(maxFreq) : "N/A");
+    
+    double[] loadAvg = cpu.getSystemLoadAverage(3);
+    double[] safeLoadAvg = new double[3];
+    if (loadAvg != null && loadAvg.length >= 3) {
+        safeLoadAvg[0] = loadAvg[0] >= 0 ? loadAvg[0] : 0.0;
+        safeLoadAvg[1] = loadAvg[1] >= 0 ? loadAvg[1] : 0.0;
+        safeLoadAvg[2] = loadAvg[2] >= 0 ? loadAvg[2] : 0.0;
+    }
+    cpuDetails.setLoadAverages(safeLoadAvg);
+    
+    // Per core usage - IMPROVED
+    int logicalProcessorCount = cpu.getLogicalProcessorCount();
+    double[] perCoreLoad = new double[logicalProcessorCount];
+    
+    try {
+        // Get per-core CPU load with a small delay
+        double[] tempLoad = cpu.getProcessorCpuLoad(10);
+        if (tempLoad != null && tempLoad.length == logicalProcessorCount) {
+            // Convert to percentages and clamp
+            for (int i = 0; i < tempLoad.length; i++) {
+                perCoreLoad[i] = Math.min(Math.max(tempLoad[i] * 100.0, 0.0), 100.0);
+            }
+        } else {
+            // Fallback: distribute total CPU load across cores
+            double perCore = cpuLoad / logicalProcessorCount;
             Arrays.fill(perCoreLoad, perCore);
         }
-        cpuDetails.setPerCoreUsage(perCoreLoad);
-        
-        // CPU ticks
-        long[] ticks = cpu.getSystemCpuLoadTicks();
-        Map<String, Long> tickMap = new HashMap<>();
-        for (CentralProcessor.TickType type : CentralProcessor.TickType.values()) {
-            tickMap.put(type.name(), ticks[type.getIndex()]);
-        }
-        cpuDetails.setCpuTicks(tickMap);
-        
-        // Update previous ticks for next call
-        previousCpuTicks = ticks;
-        
-        return cpuDetails;
+    } catch (Exception e) {
+        // Fallback: distribute total CPU load across cores
+        double perCore = cpuLoad / logicalProcessorCount;
+        Arrays.fill(perCoreLoad, perCore);
     }
+    cpuDetails.setPerCoreUsage(perCoreLoad);
+    
+    // CPU ticks
+    long[] ticks = cpu.getSystemCpuLoadTicks();
+    Map<String, Long> tickMap = new HashMap<>();
+    for (CentralProcessor.TickType type : CentralProcessor.TickType.values()) {
+        tickMap.put(type.name(), ticks[type.getIndex()]);
+    }
+    cpuDetails.setCpuTicks(tickMap);
+    
+    return cpuDetails;
+}
     
     private MemoryDetailsDTO getMemoryDetails() {
         MemoryDetailsDTO memoryDetails = new MemoryDetailsDTO();
@@ -219,7 +263,6 @@ public class SystemMonitoringService {
     
     private List<NetworkDTO> getNetworkInfo() {
         List<NetworkDTO> networks = new ArrayList<>();
-        long currentTime = System.currentTimeMillis();
         
         for (NetworkIF net : hardware.getNetworkIFs()) {
             if (net.getName().contains("Loopback") || net.getName().contains("lo")) {
@@ -232,48 +275,12 @@ public class SystemMonitoringService {
             network.setBytesSent(net.getBytesSent());
             network.setBytesReceived(net.getBytesRecv());
             
-            // Calculate speeds based on previous values
-            long uploadSpeed = 0;
-            long downloadSpeed = 0;
-            
-            String interfaceName = net.getName();
-            NetworkStats previousStats = previousNetworkStats.get(interfaceName);
-            
-            if (previousStats != null) {
-                long timeDelta = currentTime - previousStats.timestamp;
-                
-                if (timeDelta > 0) {
-                    // Calculate upload speed (bytes per second)
-                    long bytesSentDelta = net.getBytesSent() - previousStats.bytesSent;
-                    uploadSpeed = (bytesSentDelta * 1000) / timeDelta; // bytes per second
-                    
-                    // Calculate download speed (bytes per second)
-                    long bytesRecvDelta = net.getBytesRecv() - previousStats.bytesRecv;
-                    downloadSpeed = (bytesRecvDelta * 1000) / timeDelta; // bytes per second
-                    
-                    // Ensure non-negative values (counters can reset or wrap)
-                    uploadSpeed = Math.max(0, uploadSpeed);
-                    downloadSpeed = Math.max(0, downloadSpeed);
-                }
-            }
-            
-            network.setUploadSpeed(uploadSpeed);
-            network.setDownloadSpeed(downloadSpeed);
-            
-            // Update previous stats for next calculation
-            previousNetworkStats.put(interfaceName, 
-                new NetworkStats(net.getBytesSent(), net.getBytesRecv(), currentTime));
+            // Calculate speeds (would need previous values for accurate calculation)
+            network.setUploadSpeed(0);
+            network.setDownloadSpeed(0);
             
             networks.add(network);
         }
-        
-        lastNetworkUpdateTime = currentTime;
-        
-        // Clean up old entries for interfaces that might have been removed
-        Set<String> currentInterfaceNames = networks.stream()
-            .map(NetworkDTO::getName)
-            .collect(Collectors.toSet());
-        previousNetworkStats.keySet().removeIf(name -> !currentInterfaceNames.contains(name));
         
         return networks;
     }
@@ -353,6 +360,43 @@ public class SystemMonitoringService {
                 os.getProcessCount(), 300));
         }
         
+        // Fan alerts
+        sensors = hardware.getSensors();
+        int[] fanSpeeds = sensors.getFanSpeeds();
+        if (fanSpeeds != null && fanSpeeds.length > 0) {
+            // Check for stopped fans
+            for (int i = 0; i < fanSpeeds.length; i++) {
+                if (fanSpeeds[i] <= FAN_CRITICAL) {
+                    alerts.add(createAlert("FAN", "CRITICAL", 
+                        String.format("Fan %d appears to be stopped (0 RPM)", i + 1), 
+                        0, 1));
+                }
+            }
+            
+            // Check for excessively high fan speed
+            for (int i = 0; i < fanSpeeds.length; i++) {
+                if (fanSpeeds[i] > FAN_WARNING_HIGH) {
+                    alerts.add(createAlert("FAN", "WARNING", 
+                        String.format("Fan %d running at high speed: %d RPM", i + 1, fanSpeeds[i]), 
+                        fanSpeeds[i], FAN_WARNING_HIGH));
+                }
+            }
+            
+            // Check for unusually low fan speed (might indicate impending failure)
+            for (int i = 0; i < fanSpeeds.length; i++) {
+                if (fanSpeeds[i] > 0 && fanSpeeds[i] < FAN_WARNING_LOW) {
+                    alerts.add(createAlert("FAN", "WARNING", 
+                        String.format("Fan %d running at unusually low speed: %d RPM", i + 1, fanSpeeds[i]), 
+                        fanSpeeds[i], FAN_WARNING_LOW));
+                }
+            }
+        } else {
+            // No fan speed data available
+            alerts.add(createAlert("FAN", "INFO", 
+                "Fan speed monitoring not available on this system", 
+                0, 0));
+        }
+        
         return alerts;
     }
     
@@ -409,6 +453,18 @@ public class SystemMonitoringService {
         } else if (cpuUsage >= CPU_WARNING || memoryUsage >= MEMORY_WARNING) {
             return "WARNING";
         }
+        
+        // Add fan status check
+        Sensors sensors = hardware.getSensors();
+        int[] fanSpeeds = sensors.getFanSpeeds();
+        if (fanSpeeds != null && fanSpeeds.length > 0) {
+            for (int speed : fanSpeeds) {
+                if (speed == 0) {
+                    return "CRITICAL"; // Fan stopped is critical
+                }
+            }
+        }
+        
         return "HEALTHY";
     }
     
@@ -421,7 +477,78 @@ public class SystemMonitoringService {
         return "HEALTHY";
     }
     
+    // Get average fan speed for dashboard
+    private Double getAverageFanSpeed(Sensors sensors) {
+        try {
+            int[] fanSpeeds = sensors.getFanSpeeds();
+            if (fanSpeeds != null && fanSpeeds.length > 0) {
+                // Calculate average of all fans
+                double sum = 0;
+                int count = 0;
+                for (int speed : fanSpeeds) {
+                    if (speed > 0) { // Only count positive speeds
+                        sum += speed;
+                        count++;
+                    }
+                }
+                return count > 0 ? (double) Math.round(sum / count) : null;
+            }
+        } catch (Exception e) {
+            System.err.println("Error reading fan speed: " + e.getMessage());
+        }
+        return null;
+    }
+    
+    // Get detailed fan information
+    private List<FanDTO> getFanDetails(Sensors sensors) {
+        List<FanDTO> fans = new ArrayList<>();
+        
+        try {
+            int[] fanSpeeds = sensors.getFanSpeeds();
+            if (fanSpeeds != null && fanSpeeds.length > 0) {
+                for (int i = 0; i < fanSpeeds.length; i++) {
+                    FanDTO fan = new FanDTO();
+                    fan.setFanNumber(i + 1);
+                    fan.setName("Fan " + (i + 1));
+                    fan.setSpeed(fanSpeeds[i] > 0 ? fanSpeeds[i] : null);
+                    fan.setStatus(getFanStatus(fanSpeeds[i]));
+                    fans.add(fan);
+                }
+            } else {
+                // No fans detected
+                FanDTO fan = new FanDTO();
+                fan.setFanNumber(1);
+                fan.setName("System Fan");
+                fan.setSpeed(null);
+                fan.setStatus("Not Detected");
+                fans.add(fan);
+            }
+        } catch (Exception e) {
+            System.err.println("Error reading fan details: " + e.getMessage());
+            // Add error placeholder
+            FanDTO fan = new FanDTO();
+            fan.setFanNumber(1);
+            fan.setName("System Fan");
+            fan.setSpeed(null);
+            fan.setStatus("Error Reading");
+            fans.add(fan);
+        }
+        
+        return fans;
+    }
+    
+    // Determine fan status based on speed
+    private String getFanStatus(int speed) {
+        if (speed <= 0) return "Not Detected";
+        if (speed < FAN_WARNING_LOW) return "Very Low";
+        if (speed < 800) return "Low";
+        if (speed < 1500) return "Normal";
+        if (speed < FAN_WARNING_HIGH) return "High";
+        return "Very High";
+    }
+    
     // Helper formatting methods
+    @SuppressWarnings("unused")
     private static String formatBytes(long bytes) {
         if (bytes < 0) return "N/A";
         double value = bytes;

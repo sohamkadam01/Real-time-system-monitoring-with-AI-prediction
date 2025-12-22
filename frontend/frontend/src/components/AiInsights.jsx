@@ -1,12 +1,9 @@
-// google gemini step 4 from deepseek
-
 import React from 'react';
 import {
   Paper,
   Typography,
   Box,
   Chip,
-  LinearProgress,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -16,167 +13,154 @@ import {
   ListItemText,
   Alert,
   Rating,
+  Divider,
 } from '@mui/material';
 import {
-  Insights as InsightsIcon,
-  Psychology as PsychologyIcon,
-  Warning as WarningIcon,
-  Build as BuildIcon,
-  TrendingUp as TrendingUpIcon,
-  HealthAndSafety as HealthIcon,
-  ExpandMore as ExpandMoreIcon,
+  Psychology,
+  Insights,
+  Build,
+  TrendingUp,
+  Warning,
+  ExpandMore,
+  HealthAndSafety,
 } from '@mui/icons-material';
 import { useWebSocket } from '../services/websocket';
 
 const AiInsights = () => {
   const { aiInsights, analyzing } = useWebSocket();
 
+  // 🔹 No AI data
   if (!aiInsights) {
     return (
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box display="flex" alignItems="center" mb={2}>
-          <PsychologyIcon sx={{ mr: 1, color: '#666' }} />
-          <Typography variant="h6">AI System Analysis</Typography>
-          <Chip label="Disabled" size="small" sx={{ ml: 2 }} />
-        </Box>
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6">
+          <Psychology sx={{ mr: 1 }} />
+          AI Insights
+        </Typography>
         <Typography color="text.secondary">
-          Enable Google Gemini API for intelligent system analysis and predictive alerts.
+          AI analysis is currently unavailable.
         </Typography>
       </Paper>
     );
   }
 
-  const { 
-    enabled, 
-    healthScore, 
-    insights = [], 
-    recommendations = [], 
-    predictions = [], 
-    bottlenecks = [],
+  const {
+    enabled,
+    healthScore = 0,
     summary,
+    insights = [],
+    recommendations = [],
+    predictions = [],
+    bottlenecks = [],
     timestamp,
-    error 
+    error,
   } = aiInsights;
 
+  // 🔹 AI disabled
   if (!enabled) {
     return (
-      <Paper sx={{ p: 3, mb: 3, backgroundColor: 'rgba(255, 193, 7, 0.1)' }}>
-        <Typography variant="h6" gutterBottom>
-          <PsychologyIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          AI Analysis Disabled
-        </Typography>
+      <Paper sx={{ p: 3 }}>
         <Alert severity="info">
-          Set up Google Gemini API to enable intelligent monitoring.
-          Add VITE_GEMINI_API_KEY to your .env file.
+          Enable Google Gemini API to unlock AI-based system insights.
         </Alert>
       </Paper>
     );
   }
 
+  // 🔹 AI error
   if (error) {
     return (
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom color="error">
-          <WarningIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          AI Analysis Error
-        </Typography>
-        <Typography color="text.secondary">{error}</Typography>
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="error">{error}</Alert>
       </Paper>
     );
   }
 
-  const getHealthColor = (score) => {
-    if (score >= 8) return '#4caf50';
-    if (score >= 6) return '#ff9800';
-    return '#f44336';
-  };
+  const healthLabel =
+    healthScore >= 8 ? 'Excellent' :
+    healthScore >= 6 ? 'Stable' :
+    'Critical';
 
   return (
-    <Paper sx={{ p: 3, mb: 3 }}>
-      <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-        <Box display="flex" alignItems="center">
-          <PsychologyIcon sx={{ mr: 1, color: '#673ab7' }} />
-          <Typography variant="h6">AI System Analysis</Typography>
-          {analyzing && (
-            <Chip 
-              label="Analyzing..." 
-              size="small" 
-              color="primary"
-              sx={{ ml: 2 }}
-            />
-          )}
+    <Paper sx={{ p: 3 }}>
+      {/* ================= HEADER ================= */}
+      <Box display="flex" justifyContent="space-between" alignItems="center">
+        <Box>
+          <Typography variant="h6">
+            <Psychology sx={{ mr: 1, color: '#673ab7' }} />
+            AI System Insights
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Real-time AI understanding of your system
+          </Typography>
         </Box>
-        
-        <Box display="flex" alignItems="center">
-          <Rating 
-            value={healthScore / 2} 
-            max={5} 
-            readOnly 
-            precision={0.5}
-            sx={{ mr: 2 }}
+
+        <Box textAlign="center">
+          <Rating value={healthScore / 2} readOnly precision={0.5} />
+          <Chip
+            label={`${healthLabel} (${healthScore}/10)`}
+            color={
+              healthScore >= 8 ? 'success' :
+              healthScore >= 6 ? 'warning' : 'error'
+            }
+            size="small"
           />
-          <Box sx={{ 
-            width: 40, 
-            height: 40, 
-            borderRadius: '50%', 
-            backgroundColor: getHealthColor(healthScore),
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            color: 'white',
-            fontWeight: 'bold',
-            fontSize: '1.2rem'
-          }}>
-            {healthScore}
-          </Box>
         </Box>
       </Box>
 
+      {analyzing && (
+        <Chip
+          label="AI analyzing..."
+          color="primary"
+          size="small"
+          sx={{ mt: 1 }}
+        />
+      )}
+
+      <Divider sx={{ my: 2 }} />
+
+      {/* ================= SUMMARY ================= */}
       {summary && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <strong>Summary:</strong> {summary}
+        <Alert severity="info" icon={<HealthAndSafety />}>
+          <strong>AI Summary:</strong> {summary}
         </Alert>
       )}
 
+      {/* ================= INSIGHTS ================= */}
       <Accordion defaultExpanded>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Box display="flex" alignItems="center">
-            <InsightsIcon sx={{ mr: 1, color: '#2196f3' }} />
-            <Typography>Key Insights</Typography>
-            <Chip label={insights.length} size="small" sx={{ ml: 2 }} />
-          </Box>
+        <AccordionSummary expandIcon={<ExpandMore />}>
+          <Insights sx={{ mr: 1 }} />
+          <Typography>Key Observations</Typography>
         </AccordionSummary>
         <AccordionDetails>
           <List dense>
-            {insights.map((insight, index) => (
-              <ListItem key={index}>
+            {insights.map((item, i) => (
+              <ListItem key={i}>
                 <ListItemIcon>
-                  <InsightsIcon fontSize="small" color="primary" />
+                  <Insights color="primary" />
                 </ListItemIcon>
-                <ListItemText primary={insight} />
+                <ListItemText primary={item} />
               </ListItem>
             ))}
           </List>
         </AccordionDetails>
       </Accordion>
 
+      {/* ================= RECOMMENDATIONS ================= */}
       {recommendations.length > 0 && (
         <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box display="flex" alignItems="center">
-              <BuildIcon sx={{ mr: 1, color: '#4caf50' }} />
-              <Typography>Optimization Recommendations</Typography>
-              <Chip label={recommendations.length} size="small" sx={{ ml: 2 }} />
-            </Box>
+          <AccordionSummary expandIcon={<ExpandMore />}>
+            <Build sx={{ mr: 1, color: '#4caf50' }} />
+            <Typography>Recommended Actions</Typography>
           </AccordionSummary>
           <AccordionDetails>
             <List dense>
-              {recommendations.map((rec, index) => (
-                <ListItem key={index}>
+              {recommendations.map((item, i) => (
+                <ListItem key={i}>
                   <ListItemIcon>
-                    <BuildIcon fontSize="small" color="success" />
+                    <Build color="success" />
                   </ListItemIcon>
-                  <ListItemText primary={rec} />
+                  <ListItemText primary={item} />
                 </ListItem>
               ))}
             </List>
@@ -184,23 +168,21 @@ const AiInsights = () => {
         </Accordion>
       )}
 
+      {/* ================= PREDICTIONS ================= */}
       {predictions.length > 0 && (
         <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box display="flex" alignItems="center">
-              <TrendingUpIcon sx={{ mr: 1, color: '#ff9800' }} />
-              <Typography>Predictions (Next 1 Hour)</Typography>
-              <Chip label={predictions.length} size="small" sx={{ ml: 2 }} />
-            </Box>
+          <AccordionSummary expandIcon={<ExpandMore />}>
+            <TrendingUp sx={{ mr: 1, color: '#ff9800' }} />
+            <Typography>What May Happen Soon</Typography>
           </AccordionSummary>
           <AccordionDetails>
             <List dense>
-              {predictions.map((pred, index) => (
-                <ListItem key={index}>
+              {predictions.map((item, i) => (
+                <ListItem key={i}>
                   <ListItemIcon>
-                    <TrendingUpIcon fontSize="small" color="warning" />
+                    <TrendingUp color="warning" />
                   </ListItemIcon>
-                  <ListItemText primary={pred} />
+                  <ListItemText primary={item} />
                 </ListItem>
               ))}
             </List>
@@ -208,23 +190,21 @@ const AiInsights = () => {
         </Accordion>
       )}
 
+      {/* ================= BOTTLENECKS ================= */}
       {bottlenecks.length > 0 && (
         <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box display="flex" alignItems="center">
-              <WarningIcon sx={{ mr: 1, color: '#f44336' }} />
-              <Typography>Potential Bottlenecks</Typography>
-              <Chip label={bottlenecks.length} size="small" sx={{ ml: 2 }} />
-            </Box>
+          <AccordionSummary expandIcon={<ExpandMore />}>
+            <Warning sx={{ mr: 1, color: '#f44336' }} />
+            <Typography>Risk Areas</Typography>
           </AccordionSummary>
           <AccordionDetails>
             <List dense>
-              {bottlenecks.map((bottleneck, index) => (
-                <ListItem key={index}>
+              {bottlenecks.map((item, i) => (
+                <ListItem key={i}>
                   <ListItemIcon>
-                    <WarningIcon fontSize="small" color="error" />
+                    <Warning color="error" />
                   </ListItemIcon>
-                  <ListItemText primary={bottleneck} />
+                  <ListItemText primary={item} />
                 </ListItem>
               ))}
             </List>
@@ -232,9 +212,10 @@ const AiInsights = () => {
         </Accordion>
       )}
 
+      {/* ================= FOOTER ================= */}
       {timestamp && (
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-          Last analysis: {new Date(timestamp).toLocaleTimeString()}
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 2 }}>
+          Last AI update: {new Date(timestamp).toLocaleTimeString()}
         </Typography>
       )}
     </Paper>

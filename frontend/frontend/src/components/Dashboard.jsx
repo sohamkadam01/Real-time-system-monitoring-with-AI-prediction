@@ -1,5 +1,3 @@
-// google gemini step 5 from deepseek
-
 import React, { useState, useEffect } from 'react';
 import {
   Grid,
@@ -12,10 +10,8 @@ import {
   Chip,
   IconButton,
   Tooltip,
-} 
-
-
-from '@mui/material';
+  Avatar,
+} from '@mui/material';
 import {
   Memory as MemoryIcon,
   Thermostat as TempIcon,
@@ -25,13 +21,15 @@ import {
   Psychology as PsychologyIcon,
   Refresh as RefreshIcon,
   Insights as InsightsIcon,
+  Person as PersonIcon,
 } from '@mui/icons-material';
 import { useWebSocket } from '../services/websocket';
 import { systemApi } from '../services/api';
 import { formatPercentage, formatTemperature, getStatusColor } from '../utils/formatters';
 import RealTimeChart from './RealTimeChart';
 import ConnectionStatus from './ConnectionStatus';
-import AiInsights from './AiInsights'; // ADD AI INSIGHTS COMPONENT
+import AiInsights from './AiInsights';
+import { useAuth } from '../context/AuthContext'; // Import useAuth hook
 
 const Dashboard = () => {
   const { 
@@ -46,6 +44,8 @@ const Dashboard = () => {
     triggerManualAnalysis,
     getLastAnalysisText
   } = useWebSocket();
+  
+  const { user } = useAuth(); // Get user from auth context
   
   const [dashboardData, setDashboardData] = useState(null);
   const [alerts, setAlerts] = useState([]);
@@ -125,21 +125,56 @@ const Dashboard = () => {
   const aiHealthScore = aiInsights?.healthScore || 0;
   const aiHealthColor = aiHealthScore >= 8 ? '#4caf50' : aiHealthScore >= 6 ? '#ff9800' : '#f44336';
 
+  // Get user display name
+  const getUserDisplayName = () => {
+    if (!user) return 'Guest';
+    return user.username || user.name || user.email?.split('@')[0] || 'User';
+  };
+
+  // Get user initials for avatar
+  const getUserInitials = () => {
+    if (!user) return 'G';
+    const name = user.username || user.name || '';
+    return name.charAt(0).toUpperCase();
+  };
+
   return (
     <Box>
-      {/* Header with AI Status */}
+      {/* Header with User Welcome and AI Status */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h4">
-          System Dashboard
+        <Box display="flex" alignItems="center" gap={2}>
+          {/* User Welcome Section */}
+          <Box display="flex" alignItems="center" gap={1}>
+            <Avatar
+              sx={{
+                bgcolor: 'primary.main',
+                width: 40,
+                height: 40,
+                fontSize: '1rem',
+                fontWeight: 'bold',
+              }}
+            >
+              {getUserInitials()}
+            </Avatar>
+            <Box>
+              <Typography variant="h6" component="div" sx={{ lineHeight: 1 }}>
+                Welcome back, {getUserDisplayName()}!
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>
+                {user?.systemname ? `Monitoring: ${user.systemname}` : 'System Monitoring Dashboard'}
+              </Typography>
+            </Box>
+          </Box>
+          
           {connected && (
             <Chip 
               label={`Poll #${pollCount}`}
               size="small" 
               color="primary" 
-              sx={{ ml: 2, verticalAlign: 'middle' }}
+              sx={{ verticalAlign: 'middle' }}
             />
           )}
-        </Typography>
+        </Box>
         
         <Box display="flex" alignItems="center" gap={1}>
           {/* AI Health Score Indicator */}
@@ -195,7 +230,7 @@ const Dashboard = () => {
       {/* Connection Status */}
       <ConnectionStatus />
       
-      {/* AI Insights Component - ADDED HERE */}
+      {/* AI Insights Component */}
       <AiInsights />
       
       {/* Manual Refresh Indicator */}
@@ -204,6 +239,17 @@ const Dashboard = () => {
           <Typography variant="body2" color="primary" align="center">
             ↻ Manually refreshed at {lastManualRefresh.toLocaleTimeString()}
           </Typography>
+        </Paper>
+      )}
+
+      {/* User Info Card (Optional - can remove if you want less prominent display) */}
+      {user && (
+        <Paper sx={{ p: 2, mb: 2, backgroundColor: 'rgba(30, 41, 59, 0.5)' }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item>
+           
+            </Grid>
+          </Grid>
         </Paper>
       )}
 
