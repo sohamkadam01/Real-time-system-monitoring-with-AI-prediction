@@ -1,6 +1,5 @@
 package OSHI.example.project.Models;
 
-
 import jakarta.persistence.*;
 import lombok.Data;
 

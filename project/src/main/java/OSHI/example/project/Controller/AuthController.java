@@ -7,6 +7,7 @@ import OSHI.example.project.JWT.JwtUtil;
 import OSHI.example.project.Mapper.UserMapper;
 import OSHI.example.project.Models.User;
 import OSHI.example.project.Service.UserService;
+import jakarta.validation.Valid;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -28,7 +29,7 @@ public class AuthController {
     @Autowired
     private JwtUtil jwtUtil;
 
-    // ✅ REGISTER
+
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody UserRegisterRequest request) {
 
