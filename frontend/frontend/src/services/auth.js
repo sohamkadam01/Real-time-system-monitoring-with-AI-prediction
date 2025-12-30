@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8080/api/auth';
+const API_URL = 'http://localhost:8080/api';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -8,7 +8,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // Important for CORS with credentials
+  withCredentials: true,
 });
 
 // Add request interceptor to include token
@@ -29,125 +29,197 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 403) {
-      console.error('403 Forbidden - Check CORS configuration on backend');
-      return Promise.reject(new Error('Access forbidden. Please check if the backend server is properly configured for CORS.'));
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
     }
+    
+    if (error.response?.status === 403) {
+      console.error('403 Forbidden - Admin access required');
+      return Promise.reject(new Error('Access forbidden. Admin privileges required.'));
+    }
+    
     return Promise.reject(error);
   }
 );
 
 const authService = {
-  // Register user
-  register: async (userData) => {
-    try {
-      console.log('Sending registration request:', userData);
-      const response = await api.post('/register', userData);
-      console.log('Registration response:', response.data);
-      
-      if (response.data.token) {
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-      }
-      return response.data;
-    } catch (error) {
-      console.error('Registration error:', error);
-      
-      // More detailed error handling
-      let errorMessage = 'Registration failed';
-      
-      if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
-        console.error('Error response data:', error.response.data);
-        console.error('Error response status:', error.response.status);
-        console.error('Error response headers:', error.response.headers);
-        
-        if (error.response.data?.message) {
-          errorMessage = error.response.data.message;
-        } else if (error.response.data?.error) {
-          errorMessage = error.response.data.error;
-        } else if (typeof error.response.data === 'string') {
-          errorMessage = error.response.data;
-        } else {
-          errorMessage = `Server error: ${error.response.status}`;
-        }
-      } else if (error.request) {
-        // The request was made but no response was received
-        console.error('No response received:', error.request);
-        errorMessage = 'No response from server. Please check if the backend is running.';
-      } else {
-        // Something happened in setting up the request that triggered an Error
-        console.error('Request setup error:', error.message);
-        errorMessage = error.message;
-      }
-      
-      throw new Error(errorMessage);
-    }
-  },
-
-  // Login user
+  // Login user - FIXED FOR YOUR RESPONSE STRUCTURE
   login: async (credentials) => {
     try {
-      console.log('Sending login request:', credentials);
-      const response = await api.post('/login', credentials);
-      console.log('Login response:', response.data);
+      console.log('🔧 authService.login() - Request:', credentials);
+      
+      // Clear old data first
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      
+      const response = await api.post('/auth/login', credentials);
+      console.log('🔧 authService.login() - Full response:', response.data);
       
       if (response.data.token) {
+        // Store token
         localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
+        console.log('🔧 Token stored:', response.data.token.substring(0, 20) + '...');
+        
+        // YOUR RESPONSE STRUCTURE: user is nested inside response.data.user
+        const userFromResponse = response.data.user || {};
+        console.log('🔧 User from response:', userFromResponse);
+        
+        // Create user data object
+        const userData = {
+          id: userFromResponse.id,
+          username: userFromResponse.username,
+          systemname: userFromResponse.systemname,
+          email: userFromResponse.email,
+          role: userFromResponse.role, // This is "ROLE_ADMIN" from your response
+          ...userFromResponse
+        };
+        
+        console.log('🔧 User data to store:', userData);
+        localStorage.setItem('user', JSON.stringify(userData));
+        
+        // Verify storage
+        console.log('🔧 Verification - Token in localStorage:', !!localStorage.getItem('token'));
+        console.log('🔧 Verification - User in localStorage:', localStorage.getItem('user'));
       }
+      
       return response.data;
     } catch (error) {
-      console.error('Login error:', error);
-      
-      let errorMessage = 'Login failed';
-      
-      if (error.response) {
-        console.error('Error response data:', error.response.data);
-        
-        if (error.response.status === 401) {
-          errorMessage = 'Invalid username or password';
-        } else if (error.response.data?.message) {
-          errorMessage = error.response.data.message;
-        } else if (error.response.data?.error) {
-          errorMessage = error.response.data.error;
-        } else {
-          errorMessage = `Server error: ${error.response.status}`;
-        }
-      } else if (error.request) {
-        errorMessage = 'No response from server. Please check if the backend is running.';
-      } else {
-        errorMessage = error.message;
-      }
-      
-      throw new Error(errorMessage);
+      console.error('🔧 Login error:', error);
+      throw error;
     }
   },
 
   // Logout user
   logout: () => {
+    console.log('🔧 authService.logout()');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    window.location.href = '/login';
   },
 
   // Get current user
   getCurrentUser: () => {
     const userStr = localStorage.getItem('user');
     if (userStr) {
-      return JSON.parse(userStr);
+      try {
+        const user = JSON.parse(userStr);
+        console.log('🔧 getCurrentUser() - Returning:', user);
+        return user;
+      } catch (e) {
+        console.error('🔧 Error parsing user data:', e);
+        return null;
+      }
     }
+    console.log('🔧 getCurrentUser() - No user found');
     return null;
   },
 
   // Check if user is authenticated
   isAuthenticated: () => {
-    return localStorage.getItem('token') !== null;
+    const hasToken = localStorage.getItem('token') !== null;
+    console.log('🔧 isAuthenticated() - Result:', hasToken);
+    return hasToken;
   },
 
   // Get auth token
   getToken: () => {
     return localStorage.getItem('token');
+  },
+
+  // Check if current user is admin - FIXED FOR "ROLE_ADMIN"
+  isAdmin: () => {
+    const user = authService.getCurrentUser();
+    console.log('🔧 isAdmin() - User:', user);
+    
+    if (!user) {
+      console.log('🔧 isAdmin() - No user, returning false');
+      return false;
+    }
+    
+    const userRole = user.role;
+    console.log('🔧 isAdmin() - User role:', userRole);
+    
+    if (userRole) {
+      const normalizedRole = userRole.toUpperCase();
+      console.log('🔧 isAdmin() - Normalized role:', normalizedRole);
+      
+      // Check for "ROLE_ADMIN" (your backend returns this)
+      const isAdminUser = 
+        normalizedRole === 'ADMIN' || 
+        normalizedRole === 'ROLE_ADMIN' ||
+        normalizedRole.includes('ADMIN');
+      
+      console.log('🔧 isAdmin() - Result:', isAdminUser);
+      return isAdminUser;
+    }
+    
+    console.log('🔧 isAdmin() - No role found, returning false');
+    return false;
+  },
+
+  // Get user role
+  getUserRole: () => {
+    const user = authService.getCurrentUser();
+    return user?.role || 'USER';
+  },
+
+  // ADMIN USER MANAGEMENT METHODS
+  
+  // Get all users (admin only)
+  getAllUsers: async () => {
+    try {
+      const response = await api.get('/admin/users');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      throw error;
+    }
+  },
+
+  // Get user by ID (admin only)
+  getUserById: async (id) => {
+    try {
+      const response = await api.get(`/admin/users/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching user ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Update user (admin only)
+  updateUser: async (id, userData) => {
+    try {
+      const response = await api.put(`/admin/users/${id}`, userData);
+      return response.data;
+    } catch (error) {
+      console.error(`Error updating user ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Delete user (admin only)
+  deleteUser: async (id) => {
+    try {
+      const response = await api.delete(`/admin/users/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error deleting user ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Toggle user activation (admin only)
+  toggleUserActivation: async (id, active) => {
+    try {
+      const response = await api.patch(`/admin/users/${id}/activate?active=${active}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error toggling user ${id} activation:`, error);
+      throw error;
+    }
   },
 
   // Test connection to backend
@@ -165,7 +237,42 @@ const authService = {
         status: error.response?.status
       };
     }
-  }
+  },
+
+  // Test admin access
+  testAdminAccess: async () => {
+    try {
+      const response = await api.get('/admin/users');
+      return { 
+        success: true, 
+        message: 'Admin access confirmed',
+        userCount: response.data?.length || 0
+      };
+    } catch (error) {
+      console.error('Admin access test failed:', error);
+      return { 
+        success: false, 
+        error: error.message,
+        status: error.response?.status
+      };
+    }
+  },
+
+  // Register user (if needed)
+  register: async (userData) => {
+    try {
+      const response = await api.post('/auth/register', userData);
+      
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+      }
+      return response.data;
+    } catch (error) {
+      console.error('Registration error:', error);
+      throw error;
+    }
+  },
 };
 
 export default authService;

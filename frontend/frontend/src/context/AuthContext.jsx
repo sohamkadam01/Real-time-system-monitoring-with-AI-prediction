@@ -23,7 +23,15 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       const data = await authService.register(userData);
-      setUser(data.user);
+      // Update user data from response
+      const userFromResponse = {
+        id: data.userId || data.id,
+        username: data.username,
+        email: data.email,
+        role: data.role,
+        ...data
+      };
+      setUser(userFromResponse);
       return { success: true, data };
     } catch (err) {
       setError(err.message || 'Registration failed');
@@ -35,7 +43,18 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       const data = await authService.login(credentials);
-      setUser(data.user);
+      
+      // Extract user data from response
+      const userData = {
+        id: data.userId || data.id,
+        username: data.username,
+        email: data.email,
+        role: data.role,
+        token: data.token,
+        ...data
+      };
+      
+      setUser(userData);
       return { success: true, data };
     } catch (err) {
       setError(err.message || 'Login failed');
@@ -53,6 +72,27 @@ export const AuthProvider = ({ children }) => {
     return authService.isAuthenticated();
   };
 
+  const isAdmin = () => {
+    return authService.isAdmin();
+  };
+
+  const getCurrentUser = () => {
+    return authService.getCurrentUser();
+  };
+
+  const refreshUserData = async () => {
+    try {
+      const updatedUser = await authService.refreshUserData();
+      if (updatedUser) {
+        setUser(updatedUser);
+      }
+      return updatedUser;
+    } catch (error) {
+      console.error('Failed to refresh user data:', error);
+      return null;
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -61,11 +101,14 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     isAuthenticated,
+    isAdmin,
+    getCurrentUser,
+    refreshUserData,
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

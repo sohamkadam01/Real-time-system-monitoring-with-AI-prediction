@@ -21,10 +21,12 @@ public class JwtUtil {
     private final Key key = Keys.hmacShaKeyFor(SECRET_KEY.getBytes());
 
     // Generate access token
-    public String generateToken(Long userId, String username) {
+    public String generateToken(Long userId, String username, String role) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("tokenType", "access");
+        claims.put("role", role); // Added role claim
+        
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(username)
@@ -39,6 +41,7 @@ public class JwtUtil {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("tokenType", "refresh");
+        
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(username)
@@ -56,6 +59,11 @@ public class JwtUtil {
     // Extract user ID from token
     public Long extractUserId(String token) {
         return extractClaim(token, claims -> claims.get("userId", Long.class));
+    }
+
+    // Extract role from token
+    public String extractRole(String token) {
+        return extractClaim(token, claims -> claims.get("role", String.class));
     }
 
     // Extract expiration date from token
@@ -91,6 +99,8 @@ public class JwtUtil {
             return extractExpiration(token).before(new Date());
         } catch (ExpiredJwtException e) {
             return true;
+        } catch (Exception e) {
+            return true; // Treat other exceptions as expired/invalid
         }
     }
 
@@ -135,8 +145,8 @@ public class JwtUtil {
         }
     }
 
-    // Refresh access token using refresh token
-    public String refreshAccessToken(String refreshToken) {
+    // Refresh access token using refresh token - fixed parameter
+    public String refreshAccessToken(String refreshToken, String role) {
         if (!validateToken(refreshToken) || !isRefreshToken(refreshToken)) {
             throw new RuntimeException("Invalid or expired refresh token");
         }
@@ -144,7 +154,7 @@ public class JwtUtil {
         Long userId = extractUserId(refreshToken);
         String username = extractUsername(refreshToken);
         
-        return generateToken(userId, username);
+        return generateToken(userId, username, role);
     }
 
     // Get remaining time until token expiration in milliseconds
@@ -152,7 +162,7 @@ public class JwtUtil {
         try {
             Date expiration = extractExpiration(token);
             Date now = new Date();
-            return expiration.getTime() - now.getTime();
+            return Math.max(0, expiration.getTime() - now.getTime()); // Prevent negative values
         } catch (Exception e) {
             return 0L;
         }
@@ -161,7 +171,7 @@ public class JwtUtil {
     // Check if token is about to expire (within specified minutes)
     public boolean isTokenAboutToExpire(String token, int minutesBefore) {
         long remainingTime = getRemainingTime(token);
-        return remainingTime > 0 && remainingTime < (minutesBefore * 60 * 1000);
+        return remainingTime > 0 && remainingTime < (minutesBefore * 60 * 1000L);
     }
 
     // Validate token with username (alternative to UserDetails)
@@ -180,5 +190,10 @@ public class JwtUtil {
         } catch (Exception e) {
             return new HashMap<>();
         }
+    }
+
+    // Additional helper method: Extract token type
+    public String extractTokenType(String token) {
+        return extractClaim(token, claims -> claims.get("tokenType", String.class));
     }
 }

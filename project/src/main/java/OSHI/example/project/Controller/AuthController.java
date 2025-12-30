@@ -4,7 +4,6 @@ import OSHI.example.project.DTO.UserLoginRequest;
 import OSHI.example.project.DTO.UserRegisterRequest;
 import OSHI.example.project.DTO.UserResponse;
 import OSHI.example.project.JWT.JwtUtil;
-import OSHI.example.project.Mapper.UserMapper;
 import OSHI.example.project.Models.User;
 import OSHI.example.project.Service.UserService;
 import jakarta.validation.Valid;
@@ -13,14 +12,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.sql.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/auth")
-
 public class AuthController {
 
     @Autowired
@@ -29,9 +26,12 @@ public class AuthController {
     @Autowired
     private JwtUtil jwtUtil;
 
-
+    // ------------------- REGISTER -------------------
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody UserRegisterRequest request) {
+    public ResponseEntity<?> register(@RequestBody @Valid UserRegisterRequest request) {
+
+        // Default role if not provided
+        String role = request.getRole() != null ? request.getRole() : "ROLE_USER";
 
         User user = new User(
                 request.getUsername(),
@@ -40,11 +40,16 @@ public class AuthController {
                 request.getPassword()
         );
 
+        user.setRole(role); // set role before saving
+
+        // Create user
         User createdUser = userService.createUser(user);
 
+        // Generate JWT including role
         String token = jwtUtil.generateToken(
                 createdUser.getId(),
-                createdUser.getUsername()
+                createdUser.getUsername(),
+                createdUser.getRole()
         );
 
         UserResponse userResponse = new UserResponse(
@@ -63,9 +68,9 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
-    // ✅ LOGIN
+    // ------------------- LOGIN -------------------
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody UserLoginRequest request) {
+    public ResponseEntity<?> login(@RequestBody @Valid UserLoginRequest request) {
 
         Optional<User> userOpt =
                 userService.authenticate(request.getUsername(), request.getPassword());
@@ -77,7 +82,12 @@ public class AuthController {
 
         User user = userOpt.get();
 
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername());
+        // Generate JWT including role
+        String token = jwtUtil.generateToken(
+                user.getId(),
+                user.getUsername(),
+                user.getRole()
+        );
 
         UserResponse userResponse = new UserResponse(
                 user.getId(),
